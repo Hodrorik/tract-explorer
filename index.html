@@ -240,7 +240,10 @@ input[type="range"] { accent-color: var(--accent); flex: 1; min-width: 80px; }
   #app[data-layout="dock"] .pane { grid-column: 1 / -1; flex-direction: row; overflow-x: auto; overflow-y: hidden; padding: 12px 18px; gap: 20px; min-width: 0; contain: inline-size; }
   #app[data-layout="dock"] .pane > * { flex: 1 1 240px; min-width: 190px; max-width: 340px; max-height: 100%; overflow-y: auto; align-content: start; }
   #app[data-layout="dock"] #g-tracts { flex: 1.3 1 310px; min-width: 250px; max-width: 420px; }
-  #app[data-layout="dock"] .foot { display: none; }
+  #app[data-layout="dock"] #rail { position: relative; }
+  #app[data-layout="dock"] #pane-quiz .opts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 7px; flex: 2 1 440px; max-width: 660px; overflow: visible; }   /* four answers in two rows, so none hides below the panel */
+  #app[data-layout="dock"] #pane-quiz .opts button { padding: 8px 10px; }
+  #app[data-layout="dock"] .foot { position: absolute; left: 0; bottom: 100%; max-width: min(640px, 52%); border-top: 0; padding: 0 18px 12px; line-height: 1.45; z-index: 1; }   /* the credit and "not a diagnostic image" sit at the foot of the 3D view, just above the panel */
 }
 
 </style>
