@@ -2073,23 +2073,26 @@ if (typeof module !== 'undefined' && module.exports) module.exports = TractKit;
    - What may move: 'rigid' = 3 shifts + 3 turns (head movement only);
                     'eddy'  = rigid + one stretch and two shears along the phase-encoding axis (what eddy currents do to an echo-planar image, to first order);
                     'affine' = 12 numbers (any shift, turn, stretch and shear; what FSL's old eddy_correct and DIPY's motion_correction fit).
+   - First, for interleaved scans: the odd and even slices of every volume are compared (sliceStagger). When they sit apart within the
+     slice plane by an amount that changes through the scan, the two halves of each volume are brought together (unstagger).
    - Two passes. A rough pass lines every diffusion-weighted volume up with the b=0 image (shifts and turns only). The roughly aligned
      volumes are then averaged, and in the fine pass each volume is lined up with the average of all the others, with the full model:
      like against like is a much sharper comparison. Last, the whole set is placed on the b=0 image with one shared shift and turn. With two
      or more b-values a b=0 image is predicted from the lined-up volumes and the real one is matched to it (like with like again); with one
-     b-value the volume recorded next to a b=0 volume fixes the head's position (see placeSet).
+     b-value the volume recorded next to a b=0 volume fixes the head's position (see placeSet). Eddy-current stretch and shear are zero
+     without a gradient, so the part of them that all volumes share is then taken out of the set (eddyMeanFix).
    - The search is Nelder-Mead on three levels of blur (4, 2, 1.5 mm), on random points in and just around the brain.
    - Each volume is redrawn once in the still image's position, and its gradient direction is turned by the same rotation, because the
      head turned under a gradient that stayed fixed in the scanner (Leemans & Jones 2009). The redraw uses cubic B-spline interpolation
      (Unser 1999), which keeps fine detail; 'linear' (the 8 nearest voxels, weighted) is quicker and blurs.
-   Not corrected here: susceptibility distortion, slices that moved within one volume, signal dropout. */
+   Not corrected here: susceptibility distortion, single slices that moved or turned on their own, shifts through the slices, signal dropout. */
 (function (root, factory) {
   var api = factory();
   if (typeof module === 'object' && module.exports) module.exports = api; else root.TractCorrect = api;
 })(typeof self !== 'undefined' ? self : this, function () {
   'use strict';
 
-  var VERSION = '0.3';
+  var VERSION = '0.4';
   function now() { return (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now(); }
   function rng(seed) { var a = (seed >>> 0) || 0x9e3779b9; return function () { a |= 0; a = a + 0x6D2B79F5 | 0; var t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
 
@@ -2104,6 +2107,10 @@ if (typeof module !== 'undefined' && module.exports) module.exports = TractKit;
     rounds: 2,              /* how many times at most the volumes are refined against their own average */
     redraw: 'cubic',        /* how the volumes are redrawn at the end: 'cubic' (sharp) or 'linear' (quicker, blurs) */
     place: 'auto',          /* how the lined-up set is placed on the b=0 image (see placeSet below): 'auto', 'predicted', 'votes', 'neighbour' or 'none' */
+    eddyMean: true,         /* with the 'eddy' model, take out of the set the stretch and shears that all volumes share (see eddyMeanFix) */
+    eddyMeanShare: 0.6,     /* ... but only when at least this share of the volume-to-volume stretch follows the gradient */
+    slices: 'auto',         /* interleaved slices: 'auto' (undone when the stagger changes through the scan), 'interleaved' (always), 'none'. See sliceStagger */
+    staggerSpread: 0.4,     /* mm: with 'auto', the stagger is undone when it varies by more than this across volumes (10th to 90th percentile) */
     neighbourLimit: { shift: 8, turn: 8 },   /* mm, degrees: if the neighbour and the votes disagree by more than this, the head certainly moved in between and the votes are used; below it the signal decides (see placeSet) */
     limit: { shift: 20, turn: 20, stretch: 20 }   /* an answer beyond these (mm, degrees, percent) is treated as a failed search and the volume is left as it was */
   };
@@ -2269,8 +2276,15 @@ if (typeof module !== 'undefined' && module.exports) module.exports = TractKit;
   function isIdentity(M) { return M[0] === 1 && M[5] === 1 && M[10] === 1 && !M[1] && !M[2] && !M[3] && !M[4] && !M[6] && !M[7] && !M[8] && !M[9] && !M[11]; }
   /* Redraw a whole scan: one 3 x 4 map per volume (12 numbers each, as in result.transforms). Volumes whose map changes nothing are copied.
      options.redraw = 'cubic' (default) or 'linear'; options.mask counts the mask voxels that fell outside. Returns { data, lost }. */
+  /* options.stagger: a correction's summary.stagger. When it was used, each volume's odd and even slices are first brought together again,
+     exactly as the correction did, so redraw(vol, res.transforms, { stagger: res.summary.stagger }) gives the corrected scan back. */
   function redraw(vol, transforms, options) {
     var o = options || {}, how = o.redraw === 'linear' ? 'linear' : 'cubic', nx = vol.dims[0], ny = vol.dims[1], nz = vol.dims[2], nt = vol.dims[3], nvox = nx * ny * nz, data = vol.data;
+    if (o.stagger && o.stagger.used) {
+      var fixed = new data.constructor(data.length);
+      for (var u = 0; u < nt; u++) unstagger(data.subarray(u * nvox, (u + 1) * nvox), nx, ny, nz, [o.stagger.xMm[u] / vol.voxel[0], o.stagger.yMm[u] / vol.voxel[1]], fixed.subarray(u * nvox, (u + 1) * nvox));
+      data = fixed;
+    }
     var out = new data.constructor(data.length), tmp = new Float32Array(nvox), coef = how === 'cubic' ? new Float64Array(nvox) : null, isInt = !(data instanceof Float32Array || data instanceof Float64Array), lost = 0, v;
     for (var t = 0; t < nt; t++) {
       var M = transforms.subarray(12 * t, 12 * t + 12), src = data.subarray(t * nvox, (t + 1) * nvox), dst = out.subarray(t * nvox, (t + 1) * nvox);
@@ -2303,6 +2317,57 @@ if (typeof module !== 'undefined' && module.exports) module.exports = TractKit;
     }
     var w = new Float64Array(n); for (k = 0; k < n; k++) { var sum = 0; for (j = 0; j < m; j++) sum += A[0][m + j] * X[k][j]; w[k] = sum; }
     return w;
+  }
+  /* Interleaved slices. Many scans record the odd slices and the even slices at different times (on some scanners even minutes apart, as two
+     "packages"). If the head moved in between, the two halves of every volume sit slightly apart: the volume is staggered, slice by slice.
+     Lining up whole volumes cannot undo that. For each volume this measures how far its odd-numbered slices (counting from 0) sit from their
+     even neighbours, in voxels, sideways within the slice. Each slice is compared with the average of the two slices around it (a shift found
+     by least squares). Doing that for the odd slices and again for the even ones, and taking half the difference, cancels the part that comes
+     from the anatomy changing from slice to slice. */
+  function sliceStagger(img, nx, ny, nz, region) {
+    if (nz < 5) return [0, 0];
+    var a = shiftOfSlices(img, nx, ny, nz, region, 1), b = shiftOfSlices(img, nx, ny, nz, region, 2);
+    return [(a[0] - b[0]) / 2, (a[1] - b[1]) / 2];
+  }
+  function shiftOfSlices(img, nx, ny, nz, region, z0) {     /* slices z0, z0+2, ... against the average of their neighbours: the shift d with slice(x + d) ~ neighbours(x) */
+    var nxy = nx * ny, d = [0, 0], it, z, x, y, i, k0;
+    var nb = function (k) { return 0.5 * (img[k - nxy] + img[k + nxy]); };
+    for (it = 0; it < 8; it++) {
+      var H = [0, 0, 0], b = [0, 0], sv = 0, sn = 0, rows = [];
+      for (z = z0; z < nz - 1; z += 2) {
+        var o = nxy * z;
+        for (y = 2; y < ny - 2; y++) for (x = 2; x < nx - 2; x++) {
+          i = x + nx * y + o; if (!region[i]) continue;
+          var sx = x + d[0], sy = y + d[1], x0 = Math.floor(sx), y0 = Math.floor(sy); if (x0 < 0 || y0 < 0 || x0 >= nx - 1 || y0 >= ny - 1) continue;
+          var fx = sx - x0, fy = sy - y0; k0 = x0 + nx * y0 + o;
+          var v = (1 - fy) * ((1 - fx) * img[k0] + fx * img[k0 + 1]) + fy * ((1 - fx) * img[k0 + nx] + fx * img[k0 + nx + 1]);
+          var N = nb(i); sv += v; sn += N; rows.push(i, v);
+        }
+      }
+      var gain = sv > 0 ? sn / sv : 1;          /* slices recorded at different times can differ a little in brightness */
+      for (var r = 0; r < rows.length; r += 2) {
+        i = rows[r];
+        var gx = 0.5 * (nb(i + 1) - nb(i - 1)), gy = 0.5 * (nb(i + nx) - nb(i - nx)), res = gain * rows[r + 1] - nb(i);
+        H[0] += gx * gx; H[1] += gx * gy; H[2] += gy * gy; b[0] += gx * res; b[1] += gy * res;
+      }
+      var det = H[0] * H[2] - H[1] * H[1]; if (!(det > 0)) break;
+      /* slice(x + d) - neighbours(x) ~ grad . (d - true d), so the step is minus the least-squares solution */
+      var ux = (H[2] * b[0] - H[1] * b[1]) / det, uy = (H[0] * b[1] - H[1] * b[0]) / det;
+      d[0] -= ux; d[1] -= uy; if (Math.abs(ux) + Math.abs(uy) < 0.002) break;
+    }
+    return d;
+  }
+  /* Shift the odd slices by half the stagger one way and the even slices by half the other way (cubic, within each slice), so the two
+     halves meet in the middle and the volume's overall position is kept. */
+  function unstagger(src, nx, ny, nz, d, dst) {
+    var nxy = nx * ny, sl = new Float32Array(nxy), out = new Float32Array(nxy), isInt = !(dst instanceof Float32Array || dst instanceof Float64Array);
+    for (var z = 0; z < nz; z++) {
+      var h = z % 2 ? 0.5 : -0.5, M = Float64Array.from([1, 0, 0, h * d[0], 0, 1, 0, h * d[1], 0, 0, 1, 0]);
+      for (var k = 0; k < nxy; k++) sl[k] = src[nxy * z + k];
+      drawVolume(sl, nx, ny, 1, M, out, 'cubic');
+      for (k = 0; k < nxy; k++) dst[nxy * z + k] = isInt ? Math.round(out[k]) : out[k];
+    }
+    return dst;
   }
   function percentile(sorted, q) { return sorted[Math.max(0, Math.min(sorted.length - 1, Math.round(q * (sorted.length - 1))))]; }
 
@@ -2450,7 +2515,7 @@ if (typeof module !== 'undefined' && module.exports) module.exports = TractKit;
     var lows = [], dwis = []; for (t = 0; t < nt; t++) if (t !== ref) (isLow(t) ? lows : dwis).push(t);
     var fineKind = 'rigid', first = [], fine = [], maps = [], identityM = voxelMatrix(new Float64Array(6), 'rigid', pe, voxel, c), common = null;
     for (t = 0; t < nt; t++) { first.push(null); fine.push(null); maps.push(null); }
-    var job = { result: null, stage: 'Finding how each volume moved', volume: 0, total: nt - 1, step: null }, progress = 0, units = lows.length + 2.5 * dwis.length + 1 + nt * 0.15, doneUnits = 0;
+    var job = { result: null, stage: 'Finding how each volume moved', volume: 0, total: nt - 1, step: null }, progress = 0, units = lows.length + 2.5 * dwis.length + 1 + nt * 0.15 + (o.slices !== 'none' && nz >= 9 ? nt * 0.2 : 0), doneUnits = 0;
 
     /* Step 4. The diffusion-weighted volumes are now lined up with each other; this decides where the whole set sits on the b=0 image.
        'predicted' (needs two or more b-values): a b=0 image is predicted from the lined-up volumes themselves (predictionWeights), and the
@@ -2464,7 +2529,7 @@ if (typeof module !== 'undefined' && module.exports) module.exports = TractKit;
        'auto': 'predicted' when the scan allows it, otherwise 'neighbour'. 'none': the set stays where the rough pass put it.
        Tested on made-up heads with a known answer, on a three-shell public scan and on single-shell public scans with movement added by us:
        'predicted' and 'neighbour' repeated their answer better than 'votes' (see the step-6 write-up). */
-    var placeUsed = 'none', predictedImage = null, neighbourInfo = null;
+    var placeUsed = 'none', predictedImage = null, neighbourInfo = null, eddyMeanInfo = null;
     function rigidOf(M) {                                  /* the shift and turn in a voxel map, without any stretch or shear, as a voxel map */
       var A = new Float64Array(9), r, q; for (r = 0; r < 3; r++) for (q = 0; q < 3; q++) A[3 * r + q] = M[4 * r + q] * voxel[r] / voxel[q];
       var R = polarRotation(A), t = [0, 0, 0]; for (r = 0; r < 3; r++) t[r] = M[4 * r + 3] * voxel[r] - c[r] + A[3 * r] * c[0] + A[3 * r + 1] * c[1] + A[3 * r + 2] * c[2];
@@ -2521,6 +2586,42 @@ if (typeof module !== 'undefined' && module.exports) module.exports = TractKit;
       }
       return all ? bad / all : 0;
     }
+    /* The lined-up set sits in the average position and shape of its volumes. A shift and a turn can put that on the b=0 image, but eddy
+       currents also stretch and shear each volume along the phase-encoding axis, and with gradient directions on a half sphere (as scanners
+       use) those do not average out: the whole set keeps an average stretch that the b=0 image, recorded with no diffusion gradient, does
+       not have. Eddy-current stretch and shear grow in step with the gradient and are zero without one, so they are fitted against the
+       gradient over all volumes, and whatever part does not depend on the gradient (the fit's constant) is removed from every volume.
+       Only when the stretch found does follow the gradient (the fit explains at least o.eddyMeanShare of how it varies), since otherwise
+       something other than eddy currents is at work and the constant cannot be trusted. FSL's eddy offers the same idea in full as
+       its "linear second-level model", suggested for scans recorded on half a sphere of directions. */
+    function eddyMeanFix(C) {
+      var use = dwis.filter(function (t) { return fine[t]; }), bMax = 0, i, j, k; use.forEach(function (t) { if (grad.bvals[t] > bMax) bMax = grad.bvals[t]; });
+      if (use.length < 8 || !(bMax > 0)) return null;
+      var a = (pe + 1) % 3, b = (pe + 2) % 3, cons = [0, 0, 0], N = new Float64Array(16), rhs = [new Float64Array(4), new Float64Array(4), new Float64Array(4)], xs = [], ys = [];
+      use.forEach(function (t) {
+        var f = Math.sqrt(grad.bvals[t] / bMax), x = [1, f * grad.bvecs[3 * t], f * grad.bvecs[3 * t + 1], f * grad.bvecs[3 * t + 2]], L = linearPart(fine[t], fineKind, pe), R = L.R, A = L.A;
+        var row = [0, 1, 2].map(function (q) { return A[3 * pe] * R[3 * q] + A[3 * pe + 1] * R[3 * q + 1] + A[3 * pe + 2] * R[3 * q + 2]; });   /* row pe of the stretch-and-shear part, A R' */
+        var y = [row[pe] - 1, row[a], row[b]]; xs.push(x); ys.push(y[0]);
+        for (i = 0; i < 4; i++) { for (j = 0; j < 4; j++) N[4 * i + j] += x[i] * x[j]; for (k = 0; k < 3; k++) rhs[k][i] += x[i] * y[k]; }
+      });
+      for (k = 0; k < 3; k++) {                            /* solve the 4 x 4 normal equations for each of the three numbers; keep the constant */
+        var M = Float64Array.from(N), r = Float64Array.from(rhs[k]);
+        for (i = 0; i < 4; i++) { var piv = M[5 * i]; if (Math.abs(piv) < 1e-12) return null; for (j = i + 1; j < 4; j++) { var g = M[4 * j + i] / piv; for (var q = i; q < 4; q++) M[4 * j + q] -= g * M[4 * i + q]; r[j] -= g * r[i]; } }
+        var sol = new Float64Array(4); for (i = 3; i >= 0; i--) { var sum2 = r[i]; for (q = i + 1; q < 4; q++) sum2 -= M[4 * i + q] * sol[q]; sol[i] = sum2 / M[5 * i]; }
+        cons[k] = sol[0];
+        if (k === 0) {                                     /* how much of the volume-to-volume stretch the gradient explains */
+          var my = 0, ssr = 0, sst = 0; ys.forEach(function (yy) { my += yy / ys.length; });
+          ys.forEach(function (yy, q2) { var f = sol[0] + sol[1] * xs[q2][1] + sol[2] * xs[q2][2] + sol[3] * xs[q2][3]; ssr += (yy - f) * (yy - f); sst += (yy - my) * (yy - my); });
+          var share = sst > 1e-12 ? Math.max(0, 1 - ssr / sst) : 0;
+        }
+      }
+      var info = { used: share >= o.eddyMeanShare, share: +share.toFixed(3), stretch: +(100 * cons[0]).toFixed(3), shearA: +(100 * cons[1]).toFixed(3), shearB: +(100 * cons[2]).toFixed(3) };
+      if (!info.used) return { M: C, info: info };       /* the stretch does not follow the gradient as eddy currents would: leave the set as it is */
+      /* the set's frame carries the constant; put it into the map from the still image to that frame: still -> C -> stretch by the constant */
+      var D = Float64Array.from([1, 0, 0, 0, 1, 0, 0, 0, 1]); D[3 * pe + pe] = 1 - cons[0]; D[3 * pe + a] = -cons[1]; D[3 * pe + b] = -cons[2];
+      var Dv = new Float64Array(12); for (i = 0; i < 3; i++) { var off = c[i]; for (j = 0; j < 3; j++) { Dv[4 * i + j] = D[3 * i + j] * voxel[j] / voxel[i]; off -= D[3 * i + j] * c[j]; } Dv[4 * i + 3] = off / voxel[i]; }
+      return { M: C ? compose(Dv, C) : Dv, info: info };
+    }
     function* placeSet(refSmooth) {
       var w = place === 'predicted' || place === 'auto' ? predictionWeights(grad.bvals, grad.bvecs, dwis) : null;
       if (w) { placeUsed = 'predicted'; return yield* placeByPrediction(refSmooth, w); }
@@ -2547,8 +2648,24 @@ if (typeof module !== 'undefined' && module.exports) module.exports = TractKit;
       if (!neighbourInfo.used) { placeUsed = 'votes'; return Cv; }
       placeUsed = 'neighbour'; return Cn;
     }
+    /* Interleaved slices: measure every volume's odd/even stagger (sliceStagger) and, when it changes through the scan by more than
+       o.staggerSpread (or always, with 'interleaved'), undo it in every volume before anything else, so that each volume is one solid block again. */
+    var staggerInfo = null, checkSlices = o.slices !== 'none' && nz >= 9;
+    function* slicesStep() {
+      var sdx = new Float64Array(nt), sdy = new Float64Array(nt), tt;
+      for (tt = 0; tt < nt; tt++) { var dd = sliceStagger(raws(tt), nx, ny, nz, region); sdx[tt] = dd[0] * voxel[0]; sdy[tt] = dd[1] * voxel[1]; doneUnits += 0.1; yield; }
+      var spread = function (arr) { var q = Array.from(arr).sort(function (u, w) { return u - w; }); return percentile(q, 0.9) - percentile(q, 0.1); };
+      var spr = Math.max(spread(sdx), spread(sdy)), use = o.slices === 'interleaved' || spr > o.staggerSpread;
+      staggerInfo = { used: use, spreadMm: +spr.toFixed(3), xMm: Array.from(sdx), yMm: Array.from(sdy) };
+      if (use) {
+        var fixed = new data.constructor(data.length);
+        for (tt = 0; tt < nt; tt++) { unstagger(raws(tt), nx, ny, nz, [sdx[tt] / voxel[0], sdy[tt] / voxel[1]], fixed.subarray(tt * nvox, (tt + 1) * nvox)); doneUnits += 0.1; yield; }
+        data = fixed;                                      /* every later step (and raws) works on the de-staggered volumes */
+      } else doneUnits += 0.1 * nt;
+    }
     function* run() {
       var li, k, p, refSmooth = [];
+      if (checkSlices) { job.stage = 'Checking whether odd and even slices sit apart'; yield* slicesStep(); job.stage = 'Finding how each volume moved'; }
       for (li = 0; li < nl; li++) { refSmooth.push(smooth(raws(ref), nx, ny, nz, levels[li].sig)); yield; }
       /* extra b=0 volumes: straight to the still image, shifts and turns only */
       for (k = 0; k < lows.length; k++) {
@@ -2598,6 +2715,7 @@ if (typeof module !== 'undefined' && module.exports) module.exports = TractKit;
       }
       /* 4. where the whole set sits relative to the b=0 image: one common shift and turn (see placeSet). */
       if (sum && place !== 'none') { job.stage = 'Placing the set on the still image'; common = yield* placeSet(refSmooth); }
+      if (sum && fineKind === 'eddy' && o.eddyMean !== false) { var em = eddyMeanFix(common); if (em) { if (em.M) common = em.M; eddyMeanInfo = em.info; } }
       for (k = 0; k < dwis.length; k++) { var tm = dwis[k], Mf = voxelMatrix(fine[tm], fineKind, pe, voxel, c); maps[tm] = common ? compose(Mf, common) : Mf; }
       maps[ref] = identityM; doneUnits++;
       sum = own = target = null; refSmooth = null;
@@ -2665,7 +2783,7 @@ if (typeof module !== 'undefined' && module.exports) module.exports = TractKit;
     function wrap() {
       var moved = rows.filter(function (r) { return !r.reference; }), mean = 0, mx = 0, worst = -1, big = 0, meanStep = 0, maxTurn = 0;
       moved.forEach(function (r) { mean += r.shift / moved.length; meanStep += r.step / moved.length; if (r.shift > mx) { mx = r.shift; worst = r.index; } if (r.shift > 2) big++; if (r.turn > maxTurn) maxTurn = r.turn; });
-      var summary = { volumes: nt, reference: ref, model: model, pe: pe, numbers: np, redraw: how, placement: placeUsed, neighbour: neighbourInfo, eddyPattern: eddyPattern(), meanShift: mean, maxShift: mx, worst: worst, over2mm: big, meanStep: meanStep, maxTurn: maxTurn, failed: failed, lostBrainVoxels: lost, brainVoxels: blist.length,
+      var summary = { volumes: nt, reference: ref, model: model, pe: pe, numbers: np, redraw: how, placement: placeUsed, neighbour: neighbourInfo, eddyMean: eddyMeanInfo, stagger: staggerInfo, eddyPattern: eddyPattern(), meanShift: mean, maxShift: mx, worst: worst, over2mm: big, meanStep: meanStep, maxTurn: maxTurn, failed: failed, lostBrainVoxels: lost, brainVoxels: blist.length,
         refined: dwis.length >= 3, evaluations: evalsTotal, seconds: (now() - t0) / 1000, version: VERSION, levels: o.levels.map(function (l) { return l.sigma; }), bins: o.bins };
       var res = { vol: Object.assign({}, vol, { data: out }), grad: Object.assign({}, grad, { bvecs: newVec }), transforms: transforms, volumes: rows, summary: summary };
       res.text = correctionText(res);
@@ -2686,19 +2804,22 @@ if (typeof module !== 'undefined' && module.exports) module.exports = TractKit;
   function correctionText(res) {
     var s = res.summary, axis = ['first', 'second', 'third'][s.pe];
     var what = s.model === 'rigid' ? 'a rigid-body transform (3 shifts and 3 rotations)' : s.model === 'affine' ? 'a 12-parameter affine transform' : 'a rigid-body transform plus a stretch and two shears along the phase-encoding axis (assumed to be the ' + axis + ' image axis), 9 parameters in all';
-    return 'Head motion' + (s.model === 'rigid' ? '' : ' and eddy-current distortion') + ' were corrected with TractCorrect ' + s.version + '. Each diffusion-weighted volume was first aligned to volume ' + (s.reference + 1) + ' (b=0) with a rigid-body transform' +
+    var sg = s.stagger, fmt = function (x) { return (x > 0 ? '+' : '') + x.toFixed(2); };
+    var staggerText = sg && sg.used ? 'In every volume the odd and even slices were found to sit apart within the slice plane, by an amount that changed through the scan (along the second image axis from ' + fmt(sg.yMm[0]) + ' mm in the first volume to ' + fmt(sg.yMm[sg.yMm.length - 1]) + ' mm in the last; along the first from ' + fmt(sg.xMm[0]) + ' to ' + fmt(sg.xMm[sg.xMm.length - 1]) + ' mm), as when the two halves of an interleaved acquisition are recorded at different times. Before alignment, each volume\'s odd and even slices were shifted half way towards each other (cubic B-spline, within each slice). ' : '';
+    var em = s.eddyMean, meanText = em && em.used ? ' The stretch and shears along the phase-encoding axis that all diffusion-weighted volumes shared, the part a fit against the gradient direction (scaled by the square root of b) does not explain, were removed from the set (stretch ' + fmt(em.stretch) + '%, shears ' + fmt(em.shearA) + '% and ' + fmt(em.shearB) + '%).' : '';
+    return 'Head motion' + (s.model === 'rigid' ? '' : ' and eddy-current distortion') + ' were corrected with TractCorrect ' + s.version + '. ' + staggerText + 'Each diffusion-weighted volume was first aligned to volume ' + (s.reference + 1) + ' (b=0) with a rigid-body transform' +
       (s.refined ? ', then aligned to the average of all the other aligned diffusion-weighted volumes with ' + what + '; finally one rigid-body transform was applied to all, ' + ({
         predicted: 'found by aligning the b=0 volume to a b=0 image predicted from the aligned diffusion-weighted volumes (a log-linear tensor fit with S0 free, possible because the scan has more than one b-value)',
         votes: 'the median of the aligned volumes\' individual matches to the b=0 volume',
         neighbour: 'chosen so that the diffusion-weighted volume acquired next to a b=0 volume shows no rotation and no shift across the phase-encoding axis, with the shift along that axis taken from the median of the aligned volumes\' individual matches to the b=0 volume',
-        none: '' }[s.placement] || '') : '') +
-      '. Alignment maximised normalised mutual information (' + s.bins + ' bins; Gaussian smoothing of ' + s.levels.join(', ') + ' mm; Nelder-Mead search). Volumes were resampled once with ' + (s.redraw === 'linear' ? 'trilinear' : 'cubic B-spline') + ' interpolation' + (s.redraw === 'linear' ? '' : ' (Unser, 1999)') + ' and each gradient direction was rotated by its volume\'s rotation (Leemans & Jones, 2009). ' +
+        none: '' }[s.placement] || '') : '') + '.' + meanText +
+      ' Alignment maximised normalised mutual information (' + s.bins + ' bins; Gaussian smoothing of ' + s.levels.join(', ') + ' mm; Nelder-Mead search). Volumes were resampled once with ' + (s.redraw === 'linear' ? 'trilinear' : 'cubic B-spline') + ' interpolation' + (s.redraw === 'linear' ? '' : ' (Unser, 1999)') + ' and each gradient direction was rotated by its volume\'s rotation (Leemans & Jones, 2009). ' +
       'The brain was displaced by ' + s.meanShift.toFixed(2) + ' mm on average before correction (largest ' + s.maxShift.toFixed(2) + ' mm, volume ' + (s.worst + 1) + ').' +
       (s.failed ? ' ' + s.failed + ' volume' + (s.failed === 1 ? '' : 's') + ' could not be aligned and ' + (s.failed === 1 ? 'was' : 'were') + ' left unchanged.' : '');
   }
 
   return { VERSION: VERSION, DEFAULTS: DEFAULTS, motionJob: motionJob, correct: correct, correctionText: correctionText, redraw: redraw,
-    _: { rotation: rotation, polarRotation: polarRotation, linearPart: linearPart, widen: widen, voxelMatrix: voxelMatrix, smooth: smooth, grow: grow, sampleAt: sampleAt, predictionWeights: predictionWeights, splineCoefficients: splineCoefficients, drawVolume: drawVolume, mismatch: mismatch, nelderMead: nelderMead, mul3: mul3, inv3: inv3, turnAngle: turnAngle, modelSize: modelSize } };
+    _: { rotation: rotation, polarRotation: polarRotation, linearPart: linearPart, widen: widen, voxelMatrix: voxelMatrix, smooth: smooth, grow: grow, sampleAt: sampleAt, predictionWeights: predictionWeights, sliceStagger: sliceStagger, unstagger: unstagger, splineCoefficients: splineCoefficients, drawVolume: drawVolume, mismatch: mismatch, nelderMead: nelderMead, mul3: mul3, inv3: inv3, turnAngle: turnAngle, modelSize: modelSize } };
 });
 </script>
 <script>window.__PICKS={"layout":"dock","theme":"studio","accent":"amber","tracts":"soft","outline":"wire","card":"float","words":"anatomy","size":"compact","font":"atkinson","start":"explore"};
@@ -3161,7 +3282,7 @@ window.addEventListener('drop', function (e) { if (!hasFiles(e)) return; e.preve
 
 /* ---------- making tracts from a diffusion scan ---------- */
 var SCAN = null;                                         /* the scan last opened: { name, model, info, check, flip, base (last whole-brain run), result (what is shown and saved), named (last named-tract run), shown } */
-var MK = { level: 'simple', what: 'whole', o: null, running: false, stop: false, c: { model: 'eddy', pe: 1, redraw: 'cubic', place: 'auto' } };   /* c = what the movement correction is allowed to change, and how it redraws */
+var MK = { level: 'simple', what: 'whole', o: null, running: false, stop: false, c: { model: 'eddy', pe: 1, redraw: 'cubic', place: 'auto', slices: 'auto' } };   /* c = what the movement correction is allowed to change, and how it redraws */
 var ATLAS = null;
 function atlas() {                                        /* the tract atlas used for naming, read once from the page */
   if (ATLAS === null) { ATLAS = false; try { var el = $('atlasref'), txt = el ? el.textContent.trim() : ''; if (txt.charAt(0) === '{' && typeof TractNamer !== 'undefined') ATLAS = TractNamer.loadAtlas(JSON.parse(txt)); } catch (e) { ATLAS = false; } }
@@ -3248,6 +3369,7 @@ function maker() {
       h += '<div class="mk-f"><label for="mk-cmodel">Movement correction</label><select id="mk-cmodel">' + [['eddy', 'Movement and eddy currents'], ['rigid', 'Head movement only'], ['affine', 'Any stretch and shear']].map(function (p) { return '<option value="' + p[0] + '"' + (MK.c.model === p[0] ? ' selected' : '') + '>' + p[1] + '</option>'; }).join('') + '</select><small>What "Check and correct" may change in each volume. Eddy currents stretch and shear a volume along one image axis, differently for each gradient direction. "Head movement only" allows shifts and turns and nothing else, the cautious choice for very noisy scans.</small></div>';
       if (MK.c.model === 'eddy') h += '<div class="mk-f"><label for="mk-cpe">Phase-encoding axis</label><select id="mk-cpe">' + [[0, 'First image axis'], [1, 'Second image axis'], [2, 'Third image axis']].map(function (p) { return '<option value="' + p[0] + '"' + (MK.c.pe === p[0] ? ' selected' : '') + '>' + p[1] + '</option>'; }).join('') + '</select><small>The image axis along which eddy currents distort the scan. It is the second axis (front to back) in most head scans. If you do not know it, leave it as it is.</small></div>';
       h += '<div class="mk-f"><label for="mk-cplace">Placing the volumes on the b=0 image</label><select id="mk-cplace">' + [['auto', 'Automatic'], ['predicted', 'From a predicted b=0 image'], ['neighbour', 'From the volume recorded next to it'], ['votes', 'By matching each volume to it']].map(function (p) { return '<option value="' + p[0] + '"' + (MK.c.place === p[0] ? ' selected' : '') + '>' + p[1] + '</option>'; }).join('') + '</select><small>After the volumes are lined up with each other, the whole set still has to be put where the b=0 image is. "Automatic" predicts a b=0 image from the volumes when the scan has two or more b-values and matches the real one to it; with one b-value it uses the volume recorded right after a b=0 image, on the grounds that a head barely moves in a few seconds (this needs the volumes stored in the order they were recorded), and checks that against direct matching: whichever leaves diffusion-weighted signal brighter than the b=0 signal less often wins, because physically it never should be. Matching each volume to the b=0 image directly is the older way, and it can be pulled half a millimetre or more to one side.</small></div>';
+      h += '<div class="mk-f"><label for="mk-cslices">Odd and even slices</label><select id="mk-cslices">' + [['auto', 'Automatic'], ['interleaved', 'Always bring them together'], ['none', 'Leave them as they are']].map(function (p) { return '<option value="' + p[0] + '"' + (MK.c.slices === p[0] ? ' selected' : '') + '>' + p[1] + '</option>'; }).join('') + '</select><small>Many scans record the odd slices and the even slices at different moments. If the head moved, or the scanner drifted, in between, the two halves of every volume sit slightly apart. "Automatic" measures this in every volume and brings the halves together when the gap changes through the scan by more than 0.4 mm. It cannot fix single slices that moved on their own.</small></div>';
       h += '<div class="mk-f"><label for="mk-credraw">Redrawing after correction</label><select id="mk-credraw">' + [['cubic', 'Sharp'], ['linear', 'Smooth']].map(function (p) { return '<option value="' + p[0] + '"' + (MK.c.redraw === p[0] ? ' selected' : '') + '>' + p[1] + '</option>'; }).join('') + '</select><small>How each volume is redrawn in its corrected place. "Sharp" keeps fine detail, and the noise that comes with it (cubic B-spline). "Smooth" blends each point from its 8 nearest voxels: it blurs the scan a little, which hides noise but also thin tracts and lowers FA.</small></div>';
     }
     if (MK.what === 'whole') h += '<div class="mk-f"><label>Where to start</label><output>Whole brain</output><small>Streamlines start at random points in every voxel above the anisotropy threshold. To start in, pass through, avoid or end in a chosen place, make the whole-brain set first and then add regions on the model.</small></div>';
@@ -3269,6 +3391,7 @@ function maker() {
   if ($('mk-cpe')) $('mk-cpe').onchange = function () { MK.c.pe = +this.value; };
   if ($('mk-credraw')) $('mk-credraw').onchange = function () { MK.c.redraw = this.value; };
   if ($('mk-cplace')) $('mk-cplace').onchange = function () { MK.c.place = this.value; };
+  if ($('mk-cslices')) $('mk-cslices').onchange = function () { MK.c.slices = this.value; };
   wireCorrection();
   $('mk-go').onclick = runMaker; $('mk-go').focus();
 }
@@ -3280,6 +3403,7 @@ function moveWords(s) {
   t += s.meanShift < 0.5 && s.maxShift < 1 ? 'That is very little, so correcting changes little.' : s.meanShift < 1.5 ? 'That is a small amount, as in a careful scan.' : s.meanShift < 3 ? 'That is a moderate amount, and worth correcting.' : 'That is a lot. Correcting helps, but volumes that moved this far can also be blurred in ways that cannot be undone.';
   var e = s.eddyPattern; if (e && s.model !== 'rigid' && (e.shift > 0.6 || e.stretch > 0.6) && (e.shiftSpread > 0.2 || e.stretchSpread > 0.3)) t += ' Most of the ' + (e.shift > 0.6 && e.stretch > 0.6 ? 'shift and stretch' : e.shift > 0.6 ? 'shift' : 'stretch') + ' along the phase-encoding axis follows the gradient direction, which is the mark of eddy currents and not of the head moving.';
   if (s.placement && s.placement !== 'none') t += ' The set was placed on the b=0 image ' + ({ predicted: 'by matching it to a b=0 image predicted from the volumes', neighbour: 'from volume ' + (s.neighbour ? s.neighbour.volume + 1 : '') + ', recorded next to a b=0 image', votes: 'by matching each volume to it' }[s.placement] || '') + '.';
+  var sg = s.stagger; if (sg && sg.used) { var big = 0; sg.xMm.concat(sg.yMm).forEach(function (q) { big = Math.max(big, Math.abs(q)); }); t += ' The odd and even slices sat apart by up to ' + big.toFixed(1) + ' mm, by an amount that changed through the scan (as when the two halves of an interleaved scan are recorded at different moments), so they were brought together first.'; }
   if (s.failed) t += ' ' + plural(s.failed, 'volume') + ' could not be lined up and ' + (s.failed === 1 ? 'was' : 'were') + ' left as ' + (s.failed === 1 ? 'it was' : 'they were') + '.';
   return t;
 }
@@ -3317,7 +3441,7 @@ async function runCorrection() {
   ['mk-correct', 'mk-uncorrect'].forEach(function (id) { if ($(id)) $(id).disabled = true; });
   var err = null, done = false; await pause();
   try {
-    var job = TractCorrect.motionJob(TractEngine, SCAN.raw.vol, SCAN.raw.grad, { model: MK.c.model, pe: MK.c.pe, redraw: MK.c.redraw, place: MK.c.place }), p = 0;
+    var job = TractCorrect.motionJob(TractEngine, SCAN.raw.vol, SCAN.raw.grad, { model: MK.c.model, pe: MK.c.pe, redraw: MK.c.redraw, place: MK.c.place, slices: MK.c.slices }), p = 0;
     while (!job.result && !MK.stop) { p = job.step(60); $('mk-prog').style.width = Math.round(100 * p) + '%'; $('mk-stage').textContent = job.stage + (job.volume ? ': volume ' + Math.min(job.total, job.volume + 1) + ' of ' + job.total : ''); await pause(); }
     if (job.result) {
       var res = job.result, model = await refit(res.vol, res.grad, 'Working out the fibre directions from the lined-up scan');
