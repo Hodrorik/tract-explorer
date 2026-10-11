@@ -400,9 +400,11 @@ var TractIO = (function () {
     if (dv.getInt32(996, true) !== 1000) throw new Error('this TRK file uses a byte order that is not supported');
     var dim = [dv.getInt16(6, true), dv.getInt16(8, true), dv.getInt16(10, true)];
     var vs = [dv.getFloat32(12, true), dv.getFloat32(16, true), dv.getFloat32(20, true)];
-    var ns = dv.getInt16(36, true), np = dv.getInt16(238, true), M = [], k;
+    var ns = dv.getInt16(36, true), np = dv.getInt16(238, true), M = [], k, version = dv.getInt32(992, true);
     for (k = 0; k < 16; k++) M.push(dv.getFloat32(440 + k * 4, true));
-    var order = ascii(u8, 948, 3).toUpperCase(), hasM = M[15] !== 0 && (M[0] || M[1] || M[2]);
+    // Version 1 files have no world matrix: bytes 440-503 hold whatever was in memory. Like nibabel, ignore them and
+    // place points from the voxel size and voxel order only. Any version with a blank matrix (corner 0) is treated the same way.
+    var order = ascii(u8, 948, 3).toUpperCase(), hasM = version !== 1 && M[15] !== 0 && (M[0] || M[1] || M[2]);
     if (order.length < 3) order = 'LPS';
     var offs = [], pos = 1000, n;
     while (pos + 4 <= u8.length) { n = dv.getInt32(pos, true); if (n < 0 || pos + 4 + n * (3 + ns) * 4 + np * 4 > u8.length) break; offs.push(pos); pos += 4 + n * (3 + ns) * 4 + np * 4; }
@@ -413,7 +415,7 @@ var TractIO = (function () {
       for (var j = 0; j < 3; j++) for (var i = 0; i < 3; i++) if (grp[order[i]] === grp[ac[j]]) { map[j] = i; flip[j] = order[i] !== ac[j]; }
     } else note = 'no world matrix in the file; position is approximate';
     return {
-      name: name, format: 'TRK', count: offs.length, note: note, voxel: vs, header: { dim: dim, vs: vs, order: order, hasMatrix: !!hasM },
+      name: name, format: 'TRK', count: offs.length, note: note, voxel: vs, header: { dim: dim, vs: vs, order: order, hasMatrix: !!hasM, version: version },
       get: function (t) {
         var p = offs[t], npts = dv.getInt32(p, true), out = new Float32Array(npts * 3), stride = (3 + ns) * 4, q = p + 4;
         for (var a = 0; a < npts; a++, q += stride) {
@@ -776,6 +778,11 @@ var TractKit = (function () {
     return { total: n, shown: list.length, counts: new Uint8Array(counts), pts: pts, len: lens / used, vol: vol, sampled: nStat < n, min: mn, max: mx };
   }
 
+  /* Tracts in a brain (even with the whole spinal cord) are at most a few hundred mm long. A mean length over 1,000 mm, or not a number,
+     means the file was read wrongly, so the viewer shows a warning instead of the number. */
+  var LEN_MAX = 1000;
+  function lengthOk(mm) { return typeof mm === 'number' && mm >= 0 && mm <= LEN_MAX; }
+
   /* ---------- outline from the tracts: fill a coarse grid, close gaps, smooth, wrap a surface around it ---------- */
   function envelope(bundles, cell) {
     var mn = [Infinity, Infinity, Infinity], mx = [-Infinity, -Infinity, -Infinity], c, a, i, x, y, z;
@@ -898,7 +905,7 @@ var TractKit = (function () {
     return { meta: { kind: 'files', radius: radius, half: half, ctr: ctr, approx: approx, shellAuto: !!shell }, shell: shell, wm: null, structures: [], bundles: bundles, nodes: [], edges: [] };
   }
 
-  return { FAMILY: FAMILY, INFO: INFO, PART: PART, describe: describe, parseBundle: parseBundle, measure: measure, assemble: assemble, envelope: envelope };
+  return { FAMILY: FAMILY, INFO: INFO, PART: PART, describe: describe, parseBundle: parseBundle, measure: measure, assemble: assemble, envelope: envelope, LEN_MAX: LEN_MAX, lengthOk: lengthOk };
 })();
 if (typeof module !== 'undefined' && module.exports) module.exports = TractKit;
 </script>
@@ -1012,11 +1019,26 @@ if (typeof module !== 'undefined' && module.exports) module.exports = TractKit;
       bvals[i] = bv[i];
       if (len > 1e-6) { vec[3 * i] = x / len; vec[3 * i + 1] = y / len; vec[3 * i + 2] = z / len; }
     }
-    /* group b-values into shells (nearest 100 for display) */
-    var shells = {}, nB0 = 0;
-    for (i = 0; i < n; i++) { if (bvals[i] <= 50) { nB0++; continue; } var key = Math.round(bvals[i] / 100) * 100; shells[key] = (shells[key] || 0) + 1; }
-    var list = Object.keys(shells).map(Number).sort(function (a2, b2) { return a2 - b2; }).map(function (k) { return { b: k, n: shells[k] }; });
-    return { n: n, bvals: bvals, bvecs: vec, nB0: nB0, shells: list };
+    var groups = shellGroups(bvals);
+    return { n: n, bvals: bvals, bvecs: vec, nB0: groups.nB0, shells: groups.shells };
+  }
+
+  /* Group b-values into shells. Scanners rarely write the same number for every volume of a shell (649.999 / 650 / 650.001, or
+     995 / 1000 / 1005), so the b-values are sorted and each group takes every value within 5% (or 50, whichever is larger) of its
+     smallest one. A group's b-value is its mean, rounded to 10. b-values of 50 or less count as b = 0. Returns the groups from low to
+     high, how many b = 0 volumes there are, and for each volume the number of its group (-1 for b = 0). The scan summary, the tensor
+     fit's choice of volumes and the movement correction all use this, so they agree on how many shells a scan has. */
+  var B0_MAX = 50;
+  function shellGroups(bvals) {
+    var n = bvals.length, of = new Int32Array(n).fill(-1), order = [], list = [], nB0 = 0, i, j, k;
+    for (i = 0; i < n; i++) { if (bvals[i] <= B0_MAX) nB0++; else order.push(i); }
+    order.sort(function (a, b) { return bvals[a] - bvals[b]; });
+    for (k = 0; k < order.length; k = j) {
+      var first = bvals[order[k]], limit = first + Math.max(50, 0.05 * first), sum = 0;
+      for (j = k; j < order.length && bvals[order[j]] <= limit; j++) { sum += bvals[order[j]]; of[order[j]] = list.length; }
+      list.push({ b: Math.round(sum / (j - k) / 10) * 10, n: j - k });
+    }
+    return { nB0: nB0, shells: list, of: of };
   }
 
   /* ---------- linear algebra ---------- */
@@ -1120,11 +1142,14 @@ if (typeof module !== 'undefined' && module.exports) module.exports = TractKit;
     return out;
   }
 
-  function erode(mask, nx, ny, nz) {                     /* a voxel survives only if its six face neighbours are all inside */
-    var out = new Uint8Array(mask.length), nxy = nx * ny;
-    for (var z = 1; z < nz - 1; z++) for (var y = 1; y < ny - 1; y++) for (var x = 1; x < nx - 1; x++) {
+  /* A voxel survives only if its six face neighbours are all inside. A scan of fewer than THIN slices is shrunk within each slice only
+     (four neighbours): shrinking it through the slices as well would leave one slice or nothing. */
+  var THIN = 5;
+  function erode(mask, nx, ny, nz) {
+    var out = new Uint8Array(mask.length), nxy = nx * ny, flat = nz < THIN, z0 = flat ? 0 : 1, z1 = flat ? nz : nz - 1;
+    for (var z = z0; z < z1; z++) for (var y = 1; y < ny - 1; y++) for (var x = 1; x < nx - 1; x++) {
       var v = x + nx * y + nxy * z;
-      if (mask[v] && mask[v - 1] && mask[v + 1] && mask[v - nx] && mask[v + nx] && mask[v - nxy] && mask[v + nxy]) out[v] = 1;
+      if (mask[v] && mask[v - 1] && mask[v + 1] && mask[v - nx] && mask[v + nx] && (flat || (mask[v - nxy] && mask[v + nxy]))) out[v] = 1;
     }
     return out;
   }
@@ -1227,16 +1252,16 @@ if (typeof module !== 'undefined' && module.exports) module.exports = TractKit;
     if (grad.n !== nt) throw new Error('The scan has ' + nt + ' volumes but the direction files describe ' + grad.n + '.');
     var data = vol.data, slope = vol.slope, inter = vol.inter, i, t, v;
 
-    /* which volumes go into the tensor fit */
-    var bMax = o.bMax;
+    /* which volumes go into the tensor fit: whole shells (shellGroups), so a shell is never split. A shell counts as low up to 1550,
+       which keeps the volumes chosen when shells were rounded to the nearest 100 and "up to 1500" meant anything below 1550. */
+    var groups = shellGroups(grad.bvals), bMax = o.bMax;
     if (!(bMax > 0)) {
       bMax = Infinity;
-      var low = 0; grad.shells.forEach(function (s) { if (s.b <= 1500) low += s.n; });
-      var high = grad.shells.some(function (s) { return s.b > 1500; });
+      var low = 0, high = false; groups.shells.forEach(function (s) { if (s.b <= 1550) low += s.n; else high = true; });
       if (high && low >= 12) { bMax = 1550; notes.push('This scan has several b-values. The tensor fit uses the ones up to 1500, where the tensor model holds best.'); }
       else if (high) notes.push('This scan only has high b-values (above 1500). A tensor fit is a rough description of such data, so treat FA values with care.');
     }
-    var use = []; for (t = 0; t < nt; t++) if (grad.bvals[t] <= bMax) use.push(t);
+    var use = []; for (t = 0; t < nt; t++) if (groups.of[t] < 0 || groups.shells[groups.of[t]].b <= bMax) use.push(t);
     var dirs = use.filter(function (tt) { return grad.bvals[tt] > 50; }).length, nB0 = use.length - dirs;
     if (dirs < 6) throw new Error('Only ' + dirs + ' diffusion-weighted volumes are usable. A tensor needs at least 6 directions.');
     if (!nB0) notes.push('This scan has no volume without diffusion weighting (b = 0). The fit still works but is less stable.');
@@ -1368,7 +1393,7 @@ if (typeof module !== 'undefined' && module.exports) module.exports = TractKit;
           job.model = {
             dims: [nx, ny, nz], voxel: vol.voxel.slice(), affine: Float64Array.from(vol.affine), det: vol.det, flipX: flipX, orientation: vol.orientation,
             mask: mask, core: core, fa: fa, md: md, ad: ad, rd: rd, v1: v1, s0: s0, tensor: tensor, gqi: gq,
-            fit: { method: wls ? 'WLS' : 'OLS', volumes: n, directions: dirs, uniqueDirections: uniq.length, b0: nB0, bMax: isFinite(bMax) ? bMax : null, bHighest: Math.round(maxB * 1000), shells: grad.shells, maskVoxels: list.length, coreVoxels: countOnes(core), negative: negative, floor: floor, maskThreshold: threshold, seconds: (now() - t0) / 1000 },
+            fit: { method: wls ? 'WLS' : 'OLS', volumes: n, directions: dirs, uniqueDirections: uniq.length, b0: nB0, bMax: isFinite(bMax) ? bMax : null, bHighest: Math.round(maxB * 1000), shells: groups.shells, maskVoxels: list.length, coreVoxels: countOnes(core), negative: negative, floor: floor, maskThreshold: threshold, seconds: (now() - t0) / 1000 },
             notes: notes
           };
         }
@@ -1606,15 +1631,43 @@ if (typeof module !== 'undefined' && module.exports) module.exports = TractKit;
   }
   function track(model, options) { var job = trackJob(model, options); job.step(); return job.result; }
 
-  /* Is the directions file the right way round? Track a small sample with each axis flipped in turn.
-     The correct orientation gives the longest streamlines by a clear margin. */
+  /* Is the directions file the right way round? Track a small sample with the file as given and with each axis flipped in turn:
+     a wrong file gives clearly shorter streamlines than the right one (the test of Jeurissen et al., 2014; MRtrix's dwigradcheck).
+     A fibre direction has no sign, so flipping x is the same as flipping y and z together: these four cover every sign error.
+     Where the fibres lie nearly flat (a phantom a few slices thick), flipping z changes almost nothing, so flipping x gives the
+     same streamlines as flipping y. Such a tie is broken by the fixed order x, y, z (never by a difference too small to mean
+     anything) and reported. */
+  var FLIP_CLEAR = 1.25,   /* act only when the chosen flip's streamlines are at least 25% longer than with the file as given */
+    FLIP_TIE = 1.05;       /* flips whose mean lengths are within 5% of the longest count as a tie */
+  function flipDecision(rows) {                          /* rows: as given, x, y, z flipped, each { name, flip, meanLength } */
+    var given = rows[0], sorted = rows.slice().sort(function (a, b) { return b.meanLength - a.meanLength; }), ok = sorted[0] === given;
+    var flipped = rows.slice(1), top = Math.max.apply(null, flipped.map(function (r) { return r.meanLength; }));
+    var tied = flipped.filter(function (r) { return r.meanLength * FLIP_TIE >= top; }), chosen = tied[0];
+    /* margin: when the file looks right, how much longer than the best flip; otherwise how much longer the chosen flip is than the file as given */
+    var margin = ok ? (sorted[1].meanLength > 0 ? given.meanLength / sorted[1].meanLength : Infinity) : (given.meanLength > 0 ? chosen.meanLength / given.meanLength : Infinity);
+    var decisive = margin >= FLIP_CLEAR;
+    return { rows: rows, best: sorted[0].name, bestFlip: sorted[0].flip, chosen: chosen.name, chosenFlip: chosen.flip.slice(), tie: !ok && tied.length > 1 ? tied.map(function (r) { return r.name; }) : null,
+      margin: margin, ok: ok, decisive: decisive, threshold: FLIP_CLEAR, use: !ok && decisive ? chosen.flip.slice() : [1, 1, 1] };   /* 'use' is the flip to track with */
+  }
   function flipCheck(model, options) {
     var base = Object.assign({ count: 1500, minLength: 0, maxLength: 1000, maxSeeds: 1500, seed: 7 }, options || {}), names = ['as given', 'x flipped', 'y flipped', 'z flipped'], flips = [[1, 1, 1], [-1, 1, 1], [1, -1, 1], [1, 1, -1]];
-    var rows = flips.map(function (f, i) { var r = track(model, Object.assign({}, base, { flip: f })); return { name: names[i], flip: f, meanLength: r.stats.meanLength }; });
-    var sorted = rows.slice().sort(function (a, b) { return b.meanLength - a.meanLength; });
-    var margin = sorted[1].meanLength > 0 ? sorted[0].meanLength / sorted[1].meanLength : Infinity, ok = sorted[0].name === 'as given';
-    /* 'use' is the flip to track with: the winner when it wins clearly (25% longer), otherwise the file as given */
-    return { rows: rows, best: sorted[0].name, bestFlip: sorted[0].flip, margin: margin, ok: ok, decisive: margin >= 1.25, use: !ok && margin >= 1.25 ? sorted[0].flip.slice() : [1, 1, 1] };
+    return flipDecision(flips.map(function (f, i) { var r = track(model, Object.assign({}, base, { flip: f })); return { name: names[i], flip: f, meanLength: r.stats.meanLength }; }));
+  }
+  /* What the check found, in plain words for the page: warning ('' when there is nothing to say) and summary (for the setting's help). */
+  function flipText(c) {
+    function words(f) { return f[0] < 0 ? 'left-right (x)' : f[1] < 0 ? 'front-back (y)' : f[2] < 0 ? 'up-down (z)' : 'none'; }
+    var times = c.margin.toFixed(1), use = words(c.chosenFlip), chosenRow = c.rows.filter(function (r) { return r.name === c.chosen; })[0];
+    var others = c.rows.filter(function (r) { return c.tie && c.tie.indexOf(r.name) >= 0 && r.name !== c.chosen; });
+    var also = others.map(function (r) { return words(r.flip); }).join(' or ');
+    var tieText = !others.length ? '' : ' Flipping ' + also + ' instead worked almost as well: test tracts averaged ' + others.map(function (r) { return r.meanLength.toFixed(1) + ' mm'; }).join(' and ') + ', against ' + chosenRow.meanLength.toFixed(1) + ' mm.' +
+      (others.length === 1 ? ' The two give the same tracts when the fibres lie nearly flat, as in a scan only a few slices thick.' : '');
+    var warning = '';
+    if (!c.ok && c.decisive) warning = 'The directions file was the wrong way round: test tracts came out ' + times + ' times longer with ' + use + ' flipped than as given.' + tieText + (others.length ? ' ' + use.charAt(0).toUpperCase() + use.slice(1) + ' has been used.' : ' That has been corrected.') + ' You can change it under All settings.';
+    else if (!c.ok && c.margin > 1.1) warning = 'The directions file may be the wrong way round: test tracts came out ' + times + ' times longer with ' + use + ' flipped than as given.' + (others.length ? ' Flipping ' + also + ' instead worked almost as well.' : '') + ' That is not a clear enough difference to act on. You can try it under All settings.';
+    var summary = c.ok && c.margin >= 1.1 ? 'found the file correct as given (test tracts are ' + times + ' times longer than with any axis flipped).'
+      : c.margin < 1.1 ? 'found no clear difference between the file as given and the file with an axis flipped.'
+      : 'gave the longest test tracts with ' + use + ' flipped (' + times + ' times longer than as given' + (others.length ? '; ' + also + ' gave almost the same' : '') + ').';
+    return { warning: warning, summary: summary };
   }
 
   /* ---------- output ---------- */
@@ -1669,7 +1722,8 @@ if (typeof module !== 'undefined' && module.exports) module.exports = TractKit;
   /* What was done to the scan before tracking, as one or two sentences. follow = 'tensor' or 'gqi'. */
   function modelText(model, follow) {
     var f = model.fit, d = model.dims, v = model.voxel.map(function (x) { return +x.toFixed(2); }), gq = follow === 'gqi', g = model.gqi;
-    var maskText = 'an automatic brain mask (voxels above half the Otsu threshold in both the median-filtered mean b=0 image and the mean diffusion-weighted image; opened by about 6 mm; largest connected part; internal holes filled; eroded by one voxel for tracking)';
+    var flat = d[2] < THIN ? ' within each slice' : '';
+    var maskText = 'an automatic brain mask (voxels above half the Otsu threshold in both the median-filtered mean b=0 image and the mean diffusion-weighted image; opened by about 6 mm' + flat + '; largest connected part; internal holes filled; eroded by one voxel' + flat + ' for tracking)';
     var fitText = gq
       ? 'were reconstructed with generalized q-sampling imaging (Yeh et al., 2010; diffusion sampling length ratio ' + g.samplingLength + ', all ' + g.volumes + ' volumes) on 321 directions inside ' + maskText + '. Up to ' + g.peaks + ' fibre directions per voxel were kept (local maxima at least ' + g.peakSep + ' degrees apart and at least ' + g.peakRel + ' of the strongest), each with its quantitative anisotropy (QA).'
       : 'were fitted with a diffusion tensor in each voxel by ' + (f.method === 'WLS' ? 'weighted' : 'ordinary') + ' log-linear least squares inside ' + maskText + '.';
@@ -1697,10 +1751,10 @@ if (typeof module !== 'undefined' && module.exports) module.exports = TractKit;
       st.kept + ' streamlines were kept' + (st.selectedFrom ? ' out of ' + st.selectedFrom + ' made' : ' from ' + st.tried + ' seeds') + ' (random seed ' + s.seed + '; mean length ' + st.meanLength.toFixed(1) + ' mm). ' + closingText(s, model);
   }
 
-  return { VERSION: VERSION, gunzip: gunzip, readNifti: readNifti, parseGradients: parseGradients, fitJob: fitJob, fit: fit, trackJob: trackJob, track: track, flipCheck: flipCheck,
+  return { VERSION: VERSION, gunzip: gunzip, readNifti: readNifti, parseGradients: parseGradients, shellGroups: shellGroups, fitJob: fitJob, fit: fit, trackJob: trackJob, track: track, flipCheck: flipCheck, flipText: flipText,
     select: select, subset: subset, prepareRegions: prepareRegions, sphere: sphere,
     toTractogram: toTractogram, writeTck: writeTck, zip: zip, methodsText: methodsText, modelText: modelText, trackingText: trackingText, closingText: closingText, FIT_DEFAULTS: FIT_DEFAULTS, TRACK_DEFAULTS: TRACK_DEFAULTS,
-    _: { brainMask: brainMask, eig3: eig3, otsu: otsu, invert: invert, solve7: solve7, largestComponent: largestComponent, erode: erode, rng: rng } };
+    _: { brainMask: brainMask, eig3: eig3, otsu: otsu, invert: invert, solve7: solve7, largestComponent: largestComponent, erode: erode, rng: rng, flipDecision: flipDecision } };
 });
 
 /* TractNamer: lines a set of streamlines up with a tract atlas and gives tracts their names.
@@ -2300,14 +2354,15 @@ if (typeof module !== 'undefined' && module.exports) module.exports = TractKit;
   /* With two or more different b-values, the b=0 signal can be worked out from the diffusion-weighted volumes alone: fit
      log S = log S0 - b g'Dg (a tensor plus S0, 7 numbers) to them and keep log S0. That number is a fixed weighted sum of the
      volumes' log signals, so the weights are worked out once here. Returns one weight per listed volume, or null when the volumes
-     cannot pin S0 down (a single b-value, or too few directions). */
-  function predictionWeights(bvals, bvecs, idx) {
-    var n = idx.length, X = [], i, j, k, bs = {};
+     cannot pin S0 down (a single b-value, or too few directions). b-values are told apart by the engine's shellGroups, so 649.999 and
+     650.001 are one b-value here, as they are in the scan summary and the tensor fit. */
+  function predictionWeights(engine, bvals, bvecs, idx) {
+    var n = idx.length, X = [], i, j, k, groups = engine.shellGroups(idx.map(function (t) { return bvals[t]; }));
     for (k = 0; k < n; k++) {
-      var t = idx[k], b = bvals[t] / 1000, gx = bvecs[3 * t], gy = bvecs[3 * t + 1], gz = bvecs[3 * t + 2]; bs[Math.round(bvals[t] / 100)] = 1;
+      var t = idx[k], b = bvals[t] / 1000, gx = bvecs[3 * t], gy = bvecs[3 * t + 1], gz = bvecs[3 * t + 2];
       X.push([1, -b * gx * gx, -b * gy * gy, -b * gz * gz, -2 * b * gx * gy, -2 * b * gx * gz, -2 * b * gy * gz]);
     }
-    if (n < 10 || Object.keys(bs).length < 2) return null;
+    if (n < 10 || groups.shells.length + (groups.nB0 ? 1 : 0) < 2) return null;
     var A = [], m = 7;
     for (i = 0; i < m; i++) { A.push(new Float64Array(2 * m)); for (j = 0; j < m; j++) for (k = 0; k < n; k++) A[i][j] += X[k][i] * X[k][j]; A[i][m + i] = 1; }
     var scale = 0; for (i = 0; i < m; i++) scale = Math.max(scale, A[i][i]);
@@ -2626,7 +2681,7 @@ if (typeof module !== 'undefined' && module.exports) module.exports = TractKit;
       return { M: C ? compose(Dv, C) : Dv, info: info };
     }
     function* placeSet(refSmooth) {
-      var w = place === 'predicted' || place === 'auto' ? predictionWeights(grad.bvals, grad.bvecs, dwis) : null;
+      var w = place === 'predicted' || place === 'auto' ? predictionWeights(engine, grad.bvals, grad.bvecs, dwis) : null;
       if (w) { placeUsed = 'predicted'; return yield* placeByPrediction(refSmooth, w); }
       var Cv = yield* placeByVotes(refSmooth);
       if (place === 'votes') { placeUsed = 'votes'; return Cv; }   /* 'predicted' asked of a scan with one b-value falls through to 'neighbour', like 'auto' */
@@ -3078,10 +3133,12 @@ function card() {
   if (B.meta.what) h += '<p>' + esc(B.meta.what) + '</p>';
   else if (B.meta.known === false) h += '<p>The viewer does not recognise this name, so it has no description. It is listed under the name in your file.</p>';
   h += '</div>';
-  var cells = [[d.vol == null ? '–' : fmt(d.vol / 1000, 1), w.stats[0]], [fmt(d.len), w.stats[1]]];
+  var badLen = d.len != null && !K.lengthOk(d.len);       /* never show an impossible length: a dash and a warning instead */
+  var cells = [[d.vol == null ? '–' : fmt(d.vol / 1000, 1), w.stats[0]], [badLen ? '–' : fmt(d.len), w.stats[1]]];
   if (d.fa != null) cells.push([fmt(d.fa, 2), w.stats[2]]);
   cells.push([d.total.toLocaleString(), w.stats[3]]);
   h += '<div class="stats" style="grid-template-columns:repeat(' + cells.length + ',minmax(0,1fr))">' + cells.map(function (x) { return '<div class="stat"><b>' + x[0] + '</b><span>' + x[1] + '</span></div>'; }).join('') + '</div>';
+  if (badLen) h += '<p id="c-badlen">Length not shown: ' + (isFinite(d.len) ? 'the file gives over ' + K.LEN_MAX.toLocaleString('en-GB') + ' mm, which no brain tract can be' : 'the file does not give a usable number') + '. Its position may be wrong too, so check the file in another program.</p>';
   if (t && d.vol != null && t.d.vol != null) {
     var L = B.meta.side === 'L' ? B : t, R = B.meta.side === 'L' ? t : B, mx = Math.max(L.d.vol, R.d.vol) || 1;
     h += '<div class="group"><div class="label">Left against right, volume</div><div class="bars"><span>Left</span><div class="bar"><i style="width:' + (100 * L.d.vol / mx) + '%"></i></div><span class="num">' + fmt(L.d.vol / 1000, 1) + ' mL</span><span>Right</span><div class="bar"><i style="width:' + (100 * R.d.vol / mx) + '%"></i></div><span class="num">' + fmt(R.d.vol / 1000, 1) + ' mL</span></div></div>';
@@ -3231,7 +3288,7 @@ function pause() { return new Promise(function (r) { setTimeout(r, 0); }); }
 async function openFiles(fileList) {
   var files = Array.prototype.slice.call(fileList || []); if (!files.length || busy) return;
   if (files.every(isScanFile)) return openScan(files);   /* a scan with its direction files: make tracts. Mixed with tract files: open the tracts and say why the scan was left */
-  busy = true; var errors = [], added = [], t0 = Date.now(), perFile = Math.floor(20000 / files.length), thinned = 0, last = 0;
+  busy = true; var errors = [], added = [], t0 = Date.now(), perFile = Math.floor(20000 / files.length), thinned = 0, last = 0, badLen = false;
   for (var i = 0; i < files.length; i++) {
     var f = files[i];
     note('<b>Reading file ' + (i + 1) + ' of ' + files.length + '</b><span>' + esc(f.name) + '</span>', true); await pause();
@@ -3263,11 +3320,13 @@ async function openFiles(fileList) {
     if (thinned) bits.push('Large tracts are drawn with ' + thinned.toLocaleString() + ' streamlines each so the model turns smoothly. Counts, lengths and volumes are measured on the full files' + (added.some(function (x) { return x.m.sampled; }) ? ', or on 50,000 streamlines for tracts larger than that.' : '.'));
     if (unknown) bits.push(plural(unknown, 'name') + (unknown === 1 ? ' was' : ' were') + ' not recognised and ' + (unknown === 1 ? 'is' : 'are') + ' listed under Other.');
     if (D.meta.approx) bits.push('At least one file has no position information, so left and right may be swapped for it.');
+    badLen = added.some(function (x) { return !K.lengthOk(x.m.len); });
+    if (badLen) bits.push('At least one file gives impossible lengths (over ' + K.LEN_MAX.toLocaleString('en-GB') + ' mm). It was probably read wrongly, and its tracts may be out of view.');
     if (D.meta.shellAuto) bits.push('The outline is estimated from the tracts, not taken from a scan.');
     if (bits.length) h += '<span>' + esc(bits.join(' ')) + '</span>';
   }
   if (errors.length) h += '<b class="warn">' + (added.length ? 'Not opened' : 'Nothing could be opened') + '</b><span>' + errors.map(function (e) { return esc(e[0] + ': ' + e[1]); }).join('<br>') + '</span>' + (added.length ? '' : '<span>This viewer reads tract files: TrackVis .trk, MRtrix .tck, .trx, and DSI Studio .tt.gz.</span>');
-  note(h, false, !errors.length);      /* a clean result clears itself; problems stay until closed */
+  note(h, false, !errors.length && !badLen);      /* a clean result clears itself; problems stay until closed */
   window.__lastLoad = { added: added.length, errors: errors, ms: Date.now() - t0 };
 }
 $('open').onclick = $('empty-open').onclick = function () { $('pick').value = ''; $('pick').click(); };
@@ -3307,6 +3366,13 @@ function isScanFile(f) { return /\.(nii|nii\.gz|bval|bvec|bvals|bvecs)$/i.test(f
 function kindOf(f) { var n = f.name.toLowerCase(); return /\.nii(\.gz)?$/.test(n) ? 'scan' : /bvals?$/.test(n) ? 'bval' : /bvecs?$/.test(n) ? 'bvec' : 'other'; }
 function closeMaker() { $('maker').hidden = true; MK.stop = true; }
 function forgetScan() { SCAN = null; REG.list = []; REG.placing = false; regionRows(); drawRegions(); }
+/* The directions-file check tracks a small sample. If nothing in the scan is above the starting threshold it cannot run,
+   but the scan still opens, so the threshold can be lowered in the panel. */
+function checkDirections(model) {
+  try { return TractEngine.flipCheck(model, {}); }
+  catch (e) { if (!/nowhere to start/.test((e && e.message) || '')) throw e; return { rows: [], best: 'as given', bestFlip: [1, 1, 1], margin: 1, ok: true, decisive: false, use: [1, 1, 1], none: true }; }
+}
+function stopName() { return '"Stop below anisotropy (' + (MK.o && MK.o.follow === 'gqi' ? 'QA' : 'FA') + ')"'; }
 
 async function openScan(files) {
   if (busy || MK.running) return;
@@ -3326,14 +3392,14 @@ async function openScan(files) {
     note('<b>Finding the brain</b><span>' + esc(f.name) + '</span>', true); await pause(); await pause();
     var job = TractEngine.fitJob(vol, grad, {}), last = 0;
     while (job.step(50) < 1) { if (Date.now() - last > 150) { last = Date.now(); note('<b>Working out the fibre directions</b><span>' + Math.round(100 * job.done / job.total) + '% of ' + job.total.toLocaleString() + ' brain voxels</span>', true); } await pause(); }
-    var model = job.model, check = TractEngine.flipCheck(model, {});
+    var model = job.model, check = checkDirections(model);
     forgetScan();
     SCAN = { name: f.name, model: model, check: check, flip: check.use.slice(), base: null, result: null, named: null, shown: '', raw: { vol: vol, grad: grad }, correction: null, madeModel: null, info: { dims: vol.dims.slice(), voxel: vol.voxel.slice(), nB0: grad.nB0, shells: grad.shells, n: grad.n, unique: model.fit.uniqueDirections } };
     /* several directions per voxel only pays off with enough diffusion directions; below about 30 start with one */
     MK.o = Object.assign({}, TractEngine.TRACK_DEFAULTS, { stepSize: +(0.5 * Math.min(vol.voxel[0], vol.voxel[1], vol.voxel[2])).toFixed(2), per: 300, follow: model.gqi && model.fit.uniqueDirections >= 30 ? 'gqi' : 'tensor' });
-    MK.what = 'whole';
+    MK.what = 'whole'; if (check.none) MK.level = 'all';  /* nothing to start from: show the threshold setting straight away */
     u8 = job = null;                                     /* the scan itself is kept, so its volumes can be lined up later */
-    busy = false; note(''); maker();
+    busy = false; note(''); maker(); if (check.none) $('maker').scrollTop = 0;   /* keep the warning at the top in view */
   } catch (e) { busy = false; SCAN = null; note('<b class="warn">This scan could not be used</b><span>' + esc((e && e.message) || 'It could not be read.') + '</span>', false); }
   need = true;
 }
@@ -3343,13 +3409,13 @@ function scanLine() {
   var parts = [i.nB0 + ' without diffusion weighting'].concat(i.shells.map(function (s) { return s.n + ' at b = ' + s.b; }));
   return i.dims[0] + ' × ' + i.dims[1] + ' × ' + i.dims[2] + ' voxels of ' + (v[0] === v[1] && v[1] === v[2] ? v[0] : v.join(' × ')) + ' mm. ' + i.n + ' volumes: ' + parts.join(', ') + '.';
 }
-function flipWords(f) { return f[0] < 0 ? 'left-right (x)' : f[1] < 0 ? 'front-back (y)' : f[2] < 0 ? 'up-down (z)' : ''; }
 function maker() {
   var el = $('maker'), o = MK.o, g = SCAN.model.gqi, nd = SCAN.info.unique, at = atlas(), h = '<button class="close" type="button" aria-label="Close">×</button><div class="eyebrow">DIFFUSION SCAN</div><h2 id="mk-title">Make tracts from this scan</h2>';
   h += '<p class="mk-scan"><b>' + esc(SCAN.name) + '</b><br>' + esc(scanLine()) + '</p>';
   var warn = SCAN.model.notes.filter(function (n) { return !/different diffusion directions/.test(n); });
-  if (!SCAN.check.ok && SCAN.check.decisive) warn.push('The directions file was the wrong way round: test tracts came out ' + SCAN.check.margin.toFixed(1) + ' times longer with ' + flipWords(SCAN.check.bestFlip) + ' flipped. That has been corrected. You can change it under All settings.');
-  else if (!SCAN.check.ok && SCAN.check.margin > 1.1) warn.push('The directions file may be the wrong way round: test tracts came out ' + SCAN.check.margin.toFixed(1) + ' times longer with ' + flipWords(SCAN.check.bestFlip) + ' flipped. That is not a clear enough difference to act on. You can try it under All settings.');
+  var flipSaid = SCAN.check.none ? { warning: '', summary: '' } : TractEngine.flipText(SCAN.check);   /* no test when tracking had nowhere to start */
+  if (SCAN.check.none && !SCAN.base) warn.unshift('No part of this scan is above the anisotropy threshold, so tracking has nowhere to start. Lower ' + stopName() + ' under All settings, then choose Make tracts.');
+  if (flipSaid.warning) warn.push(flipSaid.warning);
   warn.forEach(function (w) { h += '<p class="mk-warn">' + esc(w) + '</p>'; });
   h += correctionBlock();
   h += '<div class="mk-opt"><label>What to make</label><div class="seg" id="mk-what"><button type="button" data-v="whole" aria-pressed="' + (MK.what === 'whole') + '">Whole brain</button><button type="button" data-v="named" aria-pressed="' + (MK.what === 'named') + '"' + (at ? '' : ' disabled') + '>Named tracts</button></div>';
@@ -3367,7 +3433,7 @@ function maker() {
     h += '<small>' + F.help + '</small></div>';
   });
   if (MK.level === 'all') {
-    h += '<div class="mk-f"><label for="mk-flip">Directions file</label><select id="mk-flip">' + [['1,1,1', 'As given'], ['-1,1,1', 'Flip left-right (x)'], ['1,-1,1', 'Flip front-back (y)'], ['1,1,-1', 'Flip up-down (z)']].map(function (p) { return '<option value="' + p[0] + '"' + (SCAN.flip.join() === p[0] ? ' selected' : '') + '>' + p[1] + '</option>'; }).join('') + '</select><small>Scanners and converters do not all write directions the same way. A quick test on this scan ' + (SCAN.check.ok ? 'found the file correct as given (test tracts are ' + SCAN.check.margin.toFixed(1) + ' times longer than with any axis flipped).' : 'gave the longest test tracts with ' + esc(flipWords(SCAN.check.bestFlip)) + ' flipped (' + SCAN.check.margin.toFixed(1) + ' times longer).') + '</small></div>';
+    h += '<div class="mk-f"><label for="mk-flip">Directions file</label><select id="mk-flip">' + [['1,1,1', 'As given'], ['-1,1,1', 'Flip left-right (x)'], ['1,-1,1', 'Flip front-back (y)'], ['1,1,-1', 'Flip up-down (z)']].map(function (p) { return '<option value="' + p[0] + '"' + (SCAN.flip.join() === p[0] ? ' selected' : '') + '>' + p[1] + '</option>'; }).join('') + '</select><small>Scanners and converters do not all write directions the same way. ' + (SCAN.check.none ? 'The quick test of this file could not run, because tracking had nowhere to start. The file is used as given.' : 'A quick test on this scan ' + esc(flipSaid.summary)) + '</small></div>';
     if (canCorrect()) {
       h += '<div class="mk-f"><label for="mk-cmodel">Movement correction</label><select id="mk-cmodel">' + [['eddy', 'Movement and eddy currents'], ['rigid', 'Head movement only'], ['affine', 'Any stretch and shear']].map(function (p) { return '<option value="' + p[0] + '"' + (MK.c.model === p[0] ? ' selected' : '') + '>' + p[1] + '</option>'; }).join('') + '</select><small>What "Check and correct" may change in each volume. Eddy currents stretch and shear a volume along one image axis, differently for each gradient direction. "Head movement only" allows shifts and turns and nothing else, the cautious choice for very noisy scans.</small></div>';
       if (MK.c.model === 'eddy') h += '<div class="mk-f"><label for="mk-cpe">Phase-encoding axis</label><select id="mk-cpe">' + [[0, 'First image axis'], [1, 'Second image axis'], [2, 'Third image axis']].map(function (p) { return '<option value="' + p[0] + '"' + (MK.c.pe === p[0] ? ' selected' : '') + '>' + p[1] + '</option>'; }).join('') + '</select><small>The image axis along which eddy currents distort the scan. It is the second axis (front to back) in most head scans. If you do not know it, leave it as it is.</small></div>';
@@ -3450,7 +3516,7 @@ async function runCorrection() {
       var res = job.result, model = await refit(res.vol, res.grad, 'Working out the fibre directions from the lined-up scan');
       if (model) {
         model.correction = { text: res.text, summary: res.summary };
-        SCAN.model = model; SCAN.check = TractEngine.flipCheck(model, {}); SCAN.flip = SCAN.check.use.slice(); SCAN.info.unique = model.fit.uniqueDirections;
+        SCAN.model = model; SCAN.check = checkDirections(model); SCAN.flip = SCAN.check.use.slice(); SCAN.info.unique = model.fit.uniqueDirections;
         SCAN.correction = { summary: res.summary, text: res.text, volumes: res.volumes.map(function (r) { return { index: r.index, b: r.b, reference: r.reference, shift: r.shift, shiftMax: r.shiftMax, step: r.step, translation: r.translation.slice(), rotation: r.rotation.slice(), turn: r.turn, stretch: r.stretch, failed: r.failed }; }) };
         done = true;
       }
@@ -3463,7 +3529,7 @@ async function useOriginal() {
   if (MK.running || busy || !canCorrect() || !SCAN.model.correction) return;
   MK.running = true; busy = true; MK.stop = false; $('mk-run').hidden = false; $('mk-go').disabled = true; ['mk-correct', 'mk-uncorrect'].forEach(function (id) { if ($(id)) $(id).disabled = true; });
   var err = null; await pause();
-  try { var model = await refit(SCAN.raw.vol, SCAN.raw.grad, 'Working out the fibre directions from the scan as it was'); if (model) { SCAN.model = model; SCAN.check = TractEngine.flipCheck(model, {}); SCAN.flip = SCAN.check.use.slice(); } } catch (e) { err = (e && e.message) || 'The scan could not be read again.'; }
+  try { var model = await refit(SCAN.raw.vol, SCAN.raw.grad, 'Working out the fibre directions from the scan as it was'); if (model) { SCAN.model = model; SCAN.check = checkDirections(model); SCAN.flip = SCAN.check.use.slice(); } } catch (e) { err = (e && e.message) || 'The scan could not be read again.'; }
   MK.running = false; busy = false; need = true; maker(); if (err) { $('mk-run').hidden = false; $('mk-stage').textContent = err; }
 }
 function fieldText(F, v) { return (F.dp ? (+v).toFixed(F.dp) : Math.round(v).toLocaleString()) + (F.unit || ''); }
@@ -3475,7 +3541,7 @@ async function runMaker() {
   var o = MK.o, named = MK.what === 'named', stage = function (t) { $('mk-stage').textContent = t; $('mk-run').hidden = false; };
   if (!named && o.maxLength <= o.minLength) { stage('The longest streamline kept must be longer than the shortest.'); return; }
   MK.running = true; MK.stop = false; busy = true; $('mk-run').hidden = false; $('mk-go').disabled = true; $('mk-cancel').textContent = 'Stop';
-  var t0 = Date.now(), res = null, err = null, p = 0, job;
+  var t0 = Date.now(), res = null, err = null, p = 0, job, show = false;   /* show: the fix is a setting under All settings, so open them */
   try {
     if (named) {
       job = TractNamer.nameJob(TractEngine, SCAN.model, atlas(), trackOptions(), { count: o.per });
@@ -3484,18 +3550,28 @@ async function runMaker() {
     } else {
       job = TractEngine.trackJob(SCAN.model, trackOptions());
       while (!job.result && !MK.stop) { p = job.step(60); $('mk-prog').style.width = Math.round(100 * p) + '%'; $('mk-stage').textContent = 'Tracking: ' + job.kept.toLocaleString() + ' of ' + o.count.toLocaleString() + ' streamlines, from ' + job.tried.toLocaleString() + ' starting points'; await pause(); }
-      if (!MK.stop) { res = job.result; if (!res.stats.kept) err = 'No streamline met these settings. Try a lower anisotropy threshold or a shorter minimum length.'; }
+      if (!MK.stop) { res = job.result; if (!res.stats.kept) { err = noneKept(res); show = true; } }
     }
-  } catch (e) { err = (e && e.message) || 'Tracking failed.'; }
+  } catch (e) {
+    err = (e && e.message) || 'Tracking failed.';
+    if (!named && /nowhere to start/.test(err)) { err = 'No part of this scan is above the anisotropy threshold, so tracking has nowhere to start. Lower ' + stopName() + ' above and try again.'; show = true; }
+  }
   MK.running = false; busy = false; need = true;
   if ($('mk-go')) { $('mk-go').disabled = false; $('mk-cancel').textContent = 'Cancel'; }
-  if (err) { $('mk-stage').textContent = err; return; }
+  if (err) { if (show && MK.level !== 'all') { MK.level = 'all'; maker(); $('mk-run').hidden = false; } $('mk-stage').textContent = err; return; }
   if (!res) { $('mk-run').hidden = true; return; }
   $('mk-stage').textContent = 'Drawing'; await pause();
   SCAN.seconds = (Date.now() - t0) / 1000; SCAN.madeModel = SCAN.model;
   var shown = named ? showNamed(res) : (SCAN.base = res, showWhole(res, 'whole'));
   if (!shown) { $('mk-stage').textContent = 'The streamlines could not be drawn.'; return; }
   $('maker').hidden = true;
+}
+/* Why a whole-brain run kept nothing, naming the setting to change (shown under All settings). */
+function noneKept(res) {
+  var st = res.stats, s = res.settings;
+  if (st.tooShort && st.tooShort >= st.tooLong) return 'No streamline was long enough to keep: ' + plural(st.tooShort, 'streamline') + ' came out shorter than ' + s.minLength + ' mm. Lower "Shortest streamline kept" above and try again.';
+  if (st.tooLong) return 'No streamline was short enough to keep: ' + plural(st.tooLong, 'streamline') + ' came out longer than ' + s.maxLength + ' mm. Raise "Longest streamline kept" above and try again.';
+  return 'No streamline met these settings. Lower ' + stopName() + ' above and try again.';
 }
 /* Show one unsorted set made from the scan: the whole brain, a selection from it, or a run restricted by regions. */
 function showWhole(res, kind) {
