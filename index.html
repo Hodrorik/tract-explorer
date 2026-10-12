@@ -179,6 +179,28 @@ input[type="range"] { accent-color: var(--accent); flex: 1; min-width: 80px; }
 #maker .mk-bar i { display: block; height: 100%; width: 0; background: var(--accent); }
 #maker .mk-stage { font-size: 13px; color: var(--soft); }
 #g-data .primary { padding: 7px 12px; font-size: 13px; }
+/* family chips, each with its one-line meaning under it */
+.chips.fams { flex-direction: column; flex-wrap: nowrap; align-items: flex-start; gap: 8px; }
+.fam { display: flex; flex-direction: column; align-items: flex-start; gap: 3px; }
+.fam .hint { padding-left: 11px; }
+/* floating panels over the 3D view: the first-visit welcome and the word list */
+.pop { background: var(--panel); border: 1px solid var(--line-2); border-radius: 12px; padding: 16px 18px; display: flex; flex-direction: column; gap: 10px; box-shadow: 0 18px 60px rgba(0,0,0,.4); }
+.pop > * { flex: none; }
+.pop h2 { margin: 0; font-size: 16.5px; font-weight: 700; text-wrap: balance; }
+.pop p { margin: 0; color: var(--soft); }
+.pop .row { gap: 8px; margin-top: 2px; }
+#wl-text { display: flex; flex-direction: column; gap: 6px; }
+#welcome { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); width: min(440px, calc(100% - 28px)); max-height: calc(100% - 24px); overflow-y: auto; z-index: 5; }
+#gloss { position: absolute; left: 50%; top: 12px; transform: translateX(-50%); width: min(480px, calc(100% - 24px)); max-height: calc(100% - 64px); overflow: hidden; z-index: 6; }
+#gloss h2 { padding-right: 30px; }
+#gloss .gloss { flex: 0 1 auto; min-height: 0; overflow-y: auto; }   /* the list scrolls; the title and close button stay in view */
+.gloss { margin: 0; display: flex; flex-direction: column; gap: 10px; }
+.gloss div { display: flex; flex-direction: column; gap: 2px; padding-top: 10px; border-top: 1px solid var(--line); }
+.gloss dt { font-weight: 700; }
+.gloss dt span { font-weight: 400; color: var(--muted); }
+.gloss dd { margin: 0; color: var(--soft); font-size: 13px; }
+#gloss-open { margin-top: 8px; }
+#gloss-open[aria-expanded="true"] { border-color: var(--accent); color: var(--text); }
 
 @media (max-width: 760px) {
   #app { flex-direction: column-reverse; }
@@ -195,6 +217,13 @@ input[type="range"] { accent-color: var(--accent); flex: 1; min-width: 80px; }
   #note { top: 92px; max-height: 40%; }
   #views { max-width: 60%; }
   #how { display: none; }
+  #gloss-open { margin: 0; position: relative; }
+  #gloss-open::after { content: ""; position: absolute; left: 0; right: 0; top: 50%; height: 40px; transform: translateY(-50%); }   /* a 40 px tap area without making the panel's top bar taller */
+  .pop .row button { min-height: 40px; }
+  #gloss .close { min-width: 40px; min-height: 40px; top: 4px; right: 4px; }
+  #app[data-size="compact"] #gloss-open::after { height: 46px; }   /* still 40 px on screen after the compact zoom */
+  #app[data-size="compact"] :is(.pop .row button, #gloss .close) { min-height: 46px; }
+  #app[data-size="compact"] #gloss .close { min-width: 46px; }
 }
 @media (prefers-reduced-motion: reduce) { * { scroll-behavior: auto; } }
 
@@ -217,8 +246,8 @@ input[type="range"] { accent-color: var(--accent); flex: 1; min-width: 80px; }
 #app[data-font="plex"] { --ui: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif; }
 #app[data-font="atkinson"] { --ui: "Atkinson Hyperlegible", system-ui, -apple-system, "Segoe UI", sans-serif; }
 #app[data-font="serif"] :is(h1, #card h2, .quizq) { font-family: "Source Serif 4", Georgia, "Times New Roman", serif; font-weight: 600; letter-spacing: 0; }
-#app[data-size="compact"] :is(#rail, #card, #views, #note, #tip, #start, #maker) { zoom: .88; }
-#app[data-size="large"] :is(#rail, #card, #views, #note, #tip, #start, #maker) { zoom: 1.15; }
+#app[data-size="compact"] :is(#rail, #card, #views, #note, #tip, #start, #maker, #welcome, #gloss) { zoom: .88; }
+#app[data-size="large"] :is(#rail, #card, #views, #note, #tip, #start, #maker, #welcome, #gloss) { zoom: 1.15; }
 #app[data-card="drawer"] #card { left: auto; right: 0; top: 0; bottom: 0; width: min(340px, 88%); max-height: none; border-radius: 0; border-width: 0 0 0 1px; padding: 18px 18px; }
 #app[data-card="drawer"] #views { right: auto; left: 12px; justify-content: flex-start; }
 #app[data-card="drawer"] #note { top: 56px; }
@@ -236,6 +265,9 @@ input[type="range"] { accent-color: var(--accent); flex: 1; min-width: 80px; }
   #app[data-layout="dock"] .head { border-bottom: 0; padding: 10px 18px 4px; display: flex; align-items: baseline; gap: 12px; }
   #app[data-layout="dock"] .head h1 { margin: 0; font-size: 17px; }
   #app[data-layout="dock"] .head .sub { display: none; }
+  #app[data-layout="dock"] #gloss-open { margin: 0; }
+  #app[data-layout="dock"] #welcome { top: calc(50% - 30px); max-height: calc(100% - 100px); }   /* the credit line sits at the foot of the 3D view here: keep clear of it */
+  #app[data-layout="dock"] #gloss { max-height: calc(100% - 96px); }
   #app[data-layout="dock"] .tabs { padding: 4px 12px 0; width: 320px; }
   #app[data-layout="dock"] .pane { grid-column: 1 / -1; flex-direction: row; overflow-x: auto; overflow-y: hidden; padding: 12px 18px; gap: 20px; min-width: 0; contain: inline-size; }
   #app[data-layout="dock"] .pane > * { flex: 1 1 240px; min-width: 190px; max-width: 340px; max-height: 100%; overflow-y: auto; align-content: start; }
@@ -255,6 +287,7 @@ input[type="range"] { accent-color: var(--accent); flex: 1; min-width: 80px; }
       <div class="eyebrow" id="eyebrow"></div>
       <h1>Tract Explorer</h1>
       <div class="sub" id="sub"></div>
+      <button class="mini" id="gloss-open" type="button" aria-expanded="false" aria-controls="gloss">Words explained</button>
       <button class="mini" id="sheetbtn" type="button">Hide</button>
     </div>
     <div class="tabs" id="tabs" role="tablist">
@@ -293,8 +326,7 @@ input[type="range"] { accent-color: var(--accent); flex: 1; min-width: 80px; }
       </div>
       <div class="group" id="g-fam">
         <div class="label">Families</div>
-        <div class="chips" id="families"></div>
-        <p class="hint" id="famhint"></p>
+        <div class="chips fams" id="families"></div>
       </div>
       <div class="group" id="g-tracts">
         <div class="row" style="justify-content:space-between"><div class="label">Tracts</div><div class="row" style="gap:6px"><button class="mini" id="show-main" type="button">Main</button><button class="mini" id="show-all" type="button">All</button><button class="mini" id="show-none" type="button">None</button></div></div>
@@ -336,7 +368,7 @@ input[type="range"] { accent-color: var(--accent); flex: 1; min-width: 80px; }
   <main id="stage">
     <canvas id="gl"></canvas>
     <div id="views">
-      <button type="button" data-view="left">Left</button><button type="button" data-view="right">Right</button><button type="button" data-view="front">Front</button><button type="button" data-view="back">Back</button><button type="button" data-view="top">Top</button><button type="button" id="spin" aria-pressed="true">Spin</button>
+      <button type="button" data-view="left">Left side</button><button type="button" data-view="right">Right side</button><button type="button" data-view="front">Front</button><button type="button" data-view="back">Back</button><button type="button" data-view="top">Top</button><button type="button" id="spin" aria-pressed="true">Spin</button>
     </div>
     <div class="axis" hidden id="ax-l">Left</div><div class="axis" hidden id="ax-r">Right</div><div class="axis" hidden id="ax-a">Front</div><div class="axis" hidden id="ax-p">Back</div>
     <div id="how">Drag to turn · scroll or pinch to zoom · right-drag to move · click a tract</div>
@@ -346,6 +378,8 @@ input[type="range"] { accent-color: var(--accent); flex: 1; min-width: 80px; }
     <div id="empty" hidden><div><b>Open tract files to see them in 3D</b><span>TrackVis .trk, MRtrix .tck, .trx and DSI Studio .tt.gz. Or choose a diffusion scan with its .bval and .bvec files to make tracts here. Files are read on this device and are not uploaded.</span><button class="primary" id="empty-open" type="button">Open files</button></div></div>
     <div id="drop" hidden><div>Drop tract files or a diffusion scan</div></div>
     <div id="maker" hidden role="dialog" aria-modal="false" aria-labelledby="mk-title"></div>
+    <div id="welcome" class="pop" hidden role="dialog" aria-modal="false" aria-labelledby="wl-title" aria-describedby="wl-text"></div>
+    <div id="gloss" class="pop" hidden role="dialog" aria-modal="false" aria-labelledby="gloss-title"></div>
     <section id="card" hidden></section>
     <div id="status"><noscript><div><b>The brain cannot be drawn in this preview</b><span>This page draws the model with code built into it, and this preview has that switched off. That is normal for file previews on phones. Open the page in a web browser such as Safari or Chrome on a computer, or use the private link version on a phone.</span></div></noscript></div>
   </main>
@@ -582,13 +616,13 @@ var TractKit = (function () {
   'use strict';
 
   var FAMILY = {
-    Association: ['Association', 'Link areas within one hemisphere.'],
-    Commissure: ['Commissural', 'Cross the midline to link the two hemispheres.'],
-    ProjectionBasalGanglia: ['Projection: deep', 'Link the cortex with the thalamus and basal ganglia.'],
-    ProjectionBrainstem: ['Projection: brainstem', 'Link the cortex and cerebellum with the brainstem and spinal cord.'],
-    Cerebellum: ['Cerebellar', 'Tracts within and into the cerebellum.'],
-    CranialNerve: ['Cranial nerves', 'Nerves entering or leaving the brain directly.'],
-    Other: ['Other', 'Names the viewer did not recognise. They are listed under the names in your files.']
+    Association: ['Association', 'Join areas on the same side of the brain.'],
+    Commissure: ['Commissural', 'Cross between the left and right halves of the brain.'],
+    ProjectionBasalGanglia: ['Projection: deep', 'Join the outer layer to centres deep in the brain.'],
+    ProjectionBrainstem: ['Projection: brainstem', 'Run from the brain down to the brainstem and spinal cord.'],
+    Cerebellum: ['Cerebellar', 'Run in and out of the cerebellum, which steadies movement.'],
+    CranialNerve: ['Cranial nerves', 'Nerves for the eyes, face and ears that leave the brain directly.'],
+    Other: ['Other', 'Names the viewer did not recognise, listed as in your files.']
   };
   var FAM_ORDER = Object.keys(FAMILY);
 
@@ -2901,9 +2935,9 @@ var THEME = {
   paper: { clear: 0xf1f3f6, shell: 0x4f6378, shellK: 1.5, sat: 0.8, L: [0.4, 0.52], dirK: 0.78, light: true }
 };
 var WORDS = {
-  standard: { fam: null, axes: ['Left', 'Right', 'Front', 'Back'], views: ['Left', 'Right', 'Front', 'Back', 'Top'], tabs: ['Tracts', 'Wiring', 'Quiz'], shell: 'Glass brain', wm: 'White matter surface', deep: 'Deep structures', stats: ['mL volume', 'mm long', 'FA', 'streamlines'] },
-  plain: { fam: { Association: 'Within one side', Commissure: 'Between the sides', ProjectionBasalGanglia: 'To the deep centres', ProjectionBrainstem: 'To the brainstem', Cerebellum: 'Cerebellum', CranialNerve: 'Nerves', Other: 'Other' }, axes: ['Left', 'Right', 'Front', 'Back'], views: ['Left', 'Right', 'Front', 'Back', 'Top'], tabs: ['Pathways', 'Connections', 'Quiz'], shell: 'Brain outline', wm: 'White matter, the wiring', deep: 'Deep parts', stats: ['mL of space it fills', 'mm long', 'fibre alignment, 0 to 1', 'traced lines'] },
-  anatomy: { fam: { Association: 'Association', Commissure: 'Commissural', ProjectionBasalGanglia: 'Projection, subcortical', ProjectionBrainstem: 'Projection, brainstem', Cerebellum: 'Cerebellar', CranialNerve: 'Cranial nerves', Other: 'Other' }, axes: ['Left', 'Right', 'Anterior', 'Posterior'], views: ['Left lateral', 'Right lateral', 'Anterior', 'Posterior', 'Superior'], tabs: ['Tracts', 'Connectome', 'Quiz'], shell: 'Brain surface', wm: 'White matter surface (FA > 0.2)', deep: 'Subcortical structures', stats: ['volume (mL)', 'mean length (mm)', 'FA', 'streamlines'] }
+  standard: { fam: null, axes: ['Left', 'Right', 'Front', 'Back'], views: ['Left side', 'Right side', 'Front', 'Back', 'Top'], tabs: ['Tracts', 'Wiring', 'Quiz'], shell: 'Glass brain', wm: 'White matter surface', deep: 'Deep structures', stats: ['mL volume', 'mm long', 'FA', 'streamlines'] },
+  plain: { fam: { Association: 'Within one side', Commissure: 'Between the sides', ProjectionBasalGanglia: 'To the deep centres', ProjectionBrainstem: 'To the brainstem', Cerebellum: 'Cerebellum', CranialNerve: 'Nerves', Other: 'Other' }, axes: ['Left', 'Right', 'Front', 'Back'], views: ['Left side', 'Right side', 'Front', 'Back', 'Top'], tabs: ['Pathways', 'Connections', 'Quiz'], shell: 'Brain outline', wm: 'White matter, the wiring', deep: 'Deep parts', stats: ['mL of space it fills', 'mm long', 'fibre alignment, 0 to 1', 'traced lines'] },
+  anatomy: { fam: { Association: 'Association', Commissure: 'Commissural', ProjectionBasalGanglia: 'Projection, subcortical', ProjectionBrainstem: 'Projection, brainstem', Cerebellum: 'Cerebellar', CranialNerve: 'Cranial nerves', Other: 'Other' }, axes: ['Left', 'Right', 'Anterior', 'Posterior'], views: ['Left side', 'Right side', 'Front', 'Back', 'Top'], tabs: ['Tracts', 'Connectome', 'Quiz'], shell: 'Brain surface', wm: 'White matter surface (FA > 0.2)', deep: 'Subcortical structures', stats: ['volume (mL)', 'mean length (mm)', 'FA', 'streamlines'] }
 };
 /* what each tract is for, in two or three words (shown with everyday wording) */
 var ROLE = { ArcuateFasciculus: 'speech', PosteriorArcuate: 'reading', Cingulum: 'emotion and memory', ExtremeCapsule: 'language', FrontalAslantTract: 'starting speech', HippocampusAlveus: 'memory', InferiorFrontoOccipitalFasciculus: 'reading and meaning', InferiorLongitudinalFasciculus: 'recognising faces', MiddleLongitudinalFasciculus: 'hearing and language', ParietalAslantTract: 'parietal links', SuperiorLongitudinalFasciculus: 'attention', UncinateFasciculus: 'emotion and memory', VerticalOccipitalFasciculus: 'reading', Cerebellum: 'coordination', InferiorCerebellarPeduncle: 'balance signals in', MiddleCerebellarPeduncle: 'cortex to cerebellum', SuperiorCerebellarPeduncle: 'cerebellum output', Vermis: 'posture', CorpusCallosum: 'joins the two halves', AnteriorCommissure: 'joins the temporal lobes', CNII: 'sight', CNIII: 'eye movement', CNV: 'face sensation', CNVII: 'face movement', CNVIII: 'hearing and balance', AcousticRadiation: 'hearing', AnsaLenticularis: 'movement control', AnsaSubthalamica: 'movement control', FasciculusSubthalamicus: 'movement control', FasciculusLenticularis: 'movement control', CorticostriatalTract: 'habits and actions', Fornix: 'memory', OpticRadiation: 'vision', ThalamicRadiation: 'relay to the cortex', CorticopontineTract: 'cortex to cerebellum', CorticospinalTract: 'movement', CorticobulbarTract: 'face and tongue movement', DentatorubrothalamicTract: 'coordination', NonDecussatingDentatorubrothalamicTract: 'coordination', MedialForebrainBundle: 'reward', MedialLemniscus: 'touch', ReticularTract: 'alertness', ReticulospinalTract: 'posture' };
@@ -2912,6 +2946,16 @@ var SYSTEMS = [
   ['movement', 'Movement', ['CorticospinalTract', 'CorticopontineTract', 'MiddleCerebellarPeduncle', 'SuperiorCerebellarPeduncle', 'DentatorubrothalamicTract']],
   ['vision', 'Vision', ['CNII', 'OpticRadiation', 'InferiorLongitudinalFasciculus', 'VerticalOccipitalFasciculus']],
   ['memory', 'Memory and emotion', ['Fornix', 'Cingulum', 'UncinateFasciculus', 'HippocampusAlveus']]
+];
+/* the first-visit welcome, and the word list opened from the panel (both checked by test_content.js) */
+var WELCOME = { title: 'Welcome to Tract Explorer', lines: ['A brain tract is a bundle of nerve fibres that carries signals between parts of the brain.', 'This site is a learning tool for seeing them in 3D, not for diagnosis.', 'You can explore the tracts, test yourself in the quiz, or make tracts from your own diffusion MRI scan.'], go: 'Start exploring', words: 'Words explained' };
+var GLOSSARY = [
+  ['Tract', '', 'A bundle of nerve fibres that carries signals between parts of the brain. Each coloured bundle in the 3D view is one tract.'],
+  ['Streamline', 'traced fibre line', 'A line traced along the fibres, worked out from a diffusion scan. Thousands of them together show where a tract runs. Each one is a likely path, not a single fibre.'],
+  ['Voxel', '3D pixel', 'A tiny cube of the scan, often about 2 mm across. The scan gives one set of measurements for each cube.'],
+  ['FA', 'fibre score (0 to 1)', 'Short for fractional anisotropy: how strongly water moves in one direction. Near 1, water moves mostly one way, as along tightly packed fibres. Near 0, it moves equally in all directions.'],
+  ['b-value', 'scan strength', 'How strongly the scan is weighted by water movement. Most scans use 1000 to 3000 s/mm². Images with a b-value of 0 are plain images, used as a reference.'],
+  ['Diffusion scan', '', 'An MRI scan that measures how water moves in the brain. Water moves most easily along the fibres, so the scan shows which way they run. It comes as a .nii or .nii.gz file with .bval and .bvec files.']
 ];
 function W() { return WORDS[DES.words] || WORDS.standard; }
 function famName(f) { var w = W(); return (w.fam && w.fam[f]) || FAMILY[f][0]; }
@@ -3089,16 +3133,16 @@ function paint() {
 
 /* ---------- tract list and card ---------- */
 function buildFamilies() {
-  var el = $('families'); el.innerHTML = ''; var first = '';
+  var el = $('families'); el.innerHTML = '';
   Object.keys(FAMILY).forEach(function (f) {
     var n = bundles.filter(function (B) { return B.meta.fam === f; }).length; if (!n) return;
-    if (!first) first = f;
+    var row = document.createElement('div'); row.className = 'fam';
     var b = document.createElement('button'); b.type = 'button'; b.className = 'chip'; b.setAttribute('aria-pressed', S.fam[f]); b.innerHTML = esc(famName(f)) + '<b>' + n + '</b>';
-    b.onclick = function () { S.fam[f] = !S.fam[f]; b.setAttribute('aria-pressed', S.fam[f]); $('famhint').textContent = famName(f) + ': ' + FAMILY[f][1]; buildList(); refresh(); };
-    b.onmouseenter = b.onfocus = function () { $('famhint').textContent = famName(f) + ': ' + FAMILY[f][1]; };
-    el.appendChild(b);
+    var line = document.createElement('span'); line.className = 'hint'; line.id = 'famline-' + f; line.textContent = FAMILY[f][1];   /* what the family means, under its chip */
+    b.setAttribute('aria-describedby', line.id);
+    b.onclick = function () { S.fam[f] = !S.fam[f]; b.setAttribute('aria-pressed', S.fam[f]); buildList(); refresh(); };
+    row.appendChild(b); row.appendChild(line); el.appendChild(row);
   });
-  $('famhint').textContent = first ? famName(first) + ': ' + FAMILY[first][1] : '';
 }
 function buildList() {
   var q = $('search').value.trim().toLowerCase(), el = $('list'); el.innerHTML = '';
@@ -3280,6 +3324,44 @@ function design(next) {
   return DES;
 }
 
+/* ---------- first-visit welcome and the word list ---------- */
+var WELCOME_KEY = 'tract-explorer.welcome-closed';
+function welcomeClosedBefore() { try { return window.localStorage.getItem(WELCOME_KEY) === '1'; } catch (e) { return false; } }   /* storage can be blocked (private windows, strict settings): then the welcome shows each visit */
+function showWelcome() {
+  var el = $('welcome');
+  el.innerHTML = '<h2 id="wl-title">' + esc(WELCOME.title) + '</h2><div id="wl-text">' + WELCOME.lines.map(function (l) { return '<p>' + esc(l) + '</p>'; }).join('') + '</div>' +
+    '<div class="row"><button class="primary" type="button" id="wl-go">' + esc(WELCOME.go) + '</button><button class="mini" type="button" id="wl-words">' + esc(WELCOME.words) + '</button></div>';
+  el.hidden = false;
+  $('wl-go').onclick = function () { closeWelcome(true); };
+  $('wl-words').onclick = function () { closeWelcome(true); openGloss(); };
+  $('wl-go').focus({ preventScroll: true });
+}
+/* remember = the visitor closed it themselves (button or Escape); it also steps aside, without being remembered, when they start using the page */
+function closeWelcome(remember) {
+  var el = $('welcome'); if (el.hidden) return;
+  var had = el.contains(document.activeElement);
+  el.hidden = true;
+  if (remember) { try { window.localStorage.setItem(WELCOME_KEY, '1'); } catch (e) {} }
+  if (had) { var t = $('tabs').hidden ? $('open') : $('tab-' + S.mode); if (t) t.focus({ preventScroll: true }); }
+}
+function openGloss() {
+  var el = $('gloss');
+  if (!el.firstChild) {
+    el.innerHTML = '<button class="close" type="button" aria-label="Close the word list">×</button><h2 id="gloss-title">Words explained</h2><p class="hint">Terms you will meet on this site, in everyday words.</p><dl class="gloss" tabindex="0">' +
+      GLOSSARY.map(function (g) { return '<div><dt>' + esc(g[0]) + (g[1] ? ' <span>· ' + esc(g[1]) + '</span>' : '') + '</dt><dd>' + esc(g[2]) + '</dd></div>'; }).join('') + '</dl>';
+    el.querySelector('.close').onclick = closeGloss;
+  }
+  el.hidden = false; el.querySelector('.gloss').scrollTop = 0; $('gloss-open').setAttribute('aria-expanded', 'true');
+  el.querySelector('.close').focus({ preventScroll: true });
+}
+function closeGloss() {
+  var el = $('gloss'); if (el.hidden) return;
+  var had = el.contains(document.activeElement);
+  el.hidden = true; $('gloss-open').setAttribute('aria-expanded', 'false');
+  if (had) $('gloss-open').focus({ preventScroll: true });
+}
+$('gloss-open').onclick = function () { if ($('gloss').hidden) { closeWelcome(false); openGloss(); } else closeGloss(); };
+
 /* ---------- opening files ---------- */
 var busy = false;
 var noteTimer = 0;
@@ -3287,6 +3369,7 @@ function note(html, sticky, fade) { var n = $('note'); clearTimeout(noteTimer); 
 function pause() { return new Promise(function (r) { setTimeout(r, 0); }); }
 async function openFiles(fileList) {
   var files = Array.prototype.slice.call(fileList || []); if (!files.length || busy) return;
+  closeWelcome(false);
   if (files.every(isScanFile)) return openScan(files);   /* a scan with its direction files: make tracts. Mixed with tract files: open the tracts and say why the scan was left */
   busy = true; var errors = [], added = [], t0 = Date.now(), perFile = Math.floor(20000 / files.length), thinned = 0, last = 0, badLen = false;
   for (var i = 0; i < files.length; i++) {
@@ -3791,17 +3874,18 @@ $('show-all').onclick = function () { bundles.forEach(function (B) { B.on = true
 $('show-none').onclick = function () { bundles.forEach(function (B) { B.on = false; }); S.sel = null; buildList(); card(); refresh(); };
 $('edges').oninput = function () { S.edgeN = +this.value; if (S.node) pickNode(null); else drawEdges(); };
 $('qnext').onclick = quizNext;
-['tracts', 'wiring', 'quiz'].forEach(function (k) { $('tab-' + k).onclick = function () { setMode(k); }; });
+['tracts', 'wiring', 'quiz'].forEach(function (k) { $('tab-' + k).onclick = function () { closeWelcome(false); setMode(k); }; });
 Array.prototype.forEach.call(document.querySelectorAll('#views [data-view]'), function (b) { b.onclick = function () { goView(b.getAttribute('data-view')); }; });
 $('spin').onclick = function () { S.spin = !S.spin; this.setAttribute('aria-pressed', S.spin); };
 $('spin').setAttribute('aria-pressed', S.spin);
 $('sheetbtn').onclick = function () { var d = $('rail').classList.toggle('down'); this.textContent = d ? 'Controls' : 'Hide'; setTimeout(size, 30); };
 window.addEventListener('resize', size);
 if (window.ResizeObserver) new ResizeObserver(function () { size(); }).observe($('stage'));
-window.addEventListener('keydown', function (e) { if (e.key === 'Escape') { if (S.mode === 'wiring') pickNode(null); else if (S.mode === 'tracts') select(null); } });
+window.addEventListener('keydown', function (e) { if (e.key === 'Escape') { if (!$('gloss').hidden) closeGloss(); else if (!$('welcome').hidden) closeWelcome(true); else if (S.mode === 'wiring') pickNode(null); else if (S.mode === 'tracts') select(null); } });
 
 size(); build(EMBED); refresh(); frame();
 if (window.__PICKS) design(Object.assign({ repaint: true }, window.__PICKS));   /* a build can set the look it starts with (see PICKS.md) */
+if (EMBED && !welcomeClosedBefore()) showWelcome();   /* first visit: what this is and what you can do */
 window.__ready = true; $('status').hidden = true;
 window.__model = { S: S, get bundles() { return bundles; }, get nodes() { return nodes; }, get data() { return D; }, setMode: setMode, select: select, pickNode: pickNode, goView: goView, setColour: setColour, openFiles: openFiles, get scan() { return SCAN; }, get mk() { return MK; }, maker: maker, runMaker: runMaker, saveMade: saveMade, runCorrection: runCorrection, useOriginal: useOriginal, get regions() { return REG; }, addRegion: addRegion, applyRegions: applyRegions, trackRegions: trackRegions, showAll: showAll, atlas: atlas, toModel: toModel, design: design, startScreen: startScreen, showSystem: showSystem, get des() { return DES; }, cam: cam, refresh: refresh, size: size };
 })();

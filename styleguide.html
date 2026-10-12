@@ -179,6 +179,28 @@ input[type="range"] { accent-color: var(--accent); flex: 1; min-width: 80px; }
 #maker .mk-bar i { display: block; height: 100%; width: 0; background: var(--accent); }
 #maker .mk-stage { font-size: 13px; color: var(--soft); }
 #g-data .primary { padding: 7px 12px; font-size: 13px; }
+/* family chips, each with its one-line meaning under it */
+.chips.fams { flex-direction: column; flex-wrap: nowrap; align-items: flex-start; gap: 8px; }
+.fam { display: flex; flex-direction: column; align-items: flex-start; gap: 3px; }
+.fam .hint { padding-left: 11px; }
+/* floating panels over the 3D view: the first-visit welcome and the word list */
+.pop { background: var(--panel); border: 1px solid var(--line-2); border-radius: 12px; padding: 16px 18px; display: flex; flex-direction: column; gap: 10px; box-shadow: 0 18px 60px rgba(0,0,0,.4); }
+.pop > * { flex: none; }
+.pop h2 { margin: 0; font-size: 16.5px; font-weight: 700; text-wrap: balance; }
+.pop p { margin: 0; color: var(--soft); }
+.pop .row { gap: 8px; margin-top: 2px; }
+#wl-text { display: flex; flex-direction: column; gap: 6px; }
+#welcome { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); width: min(440px, calc(100% - 28px)); max-height: calc(100% - 24px); overflow-y: auto; z-index: 5; }
+#gloss { position: absolute; left: 50%; top: 12px; transform: translateX(-50%); width: min(480px, calc(100% - 24px)); max-height: calc(100% - 64px); overflow: hidden; z-index: 6; }
+#gloss h2 { padding-right: 30px; }
+#gloss .gloss { flex: 0 1 auto; min-height: 0; overflow-y: auto; }   /* the list scrolls; the title and close button stay in view */
+.gloss { margin: 0; display: flex; flex-direction: column; gap: 10px; }
+.gloss div { display: flex; flex-direction: column; gap: 2px; padding-top: 10px; border-top: 1px solid var(--line); }
+.gloss dt { font-weight: 700; }
+.gloss dt span { font-weight: 400; color: var(--muted); }
+.gloss dd { margin: 0; color: var(--soft); font-size: 13px; }
+#gloss-open { margin-top: 8px; }
+#gloss-open[aria-expanded="true"] { border-color: var(--accent); color: var(--text); }
 
 @media (max-width: 760px) {
   #app { flex-direction: column-reverse; }
@@ -195,6 +217,13 @@ input[type="range"] { accent-color: var(--accent); flex: 1; min-width: 80px; }
   #note { top: 92px; max-height: 40%; }
   #views { max-width: 60%; }
   #how { display: none; }
+  #gloss-open { margin: 0; position: relative; }
+  #gloss-open::after { content: ""; position: absolute; left: 0; right: 0; top: 50%; height: 40px; transform: translateY(-50%); }   /* a 40 px tap area without making the panel's top bar taller */
+  .pop .row button { min-height: 40px; }
+  #gloss .close { min-width: 40px; min-height: 40px; top: 4px; right: 4px; }
+  #app[data-size="compact"] #gloss-open::after { height: 46px; }   /* still 40 px on screen after the compact zoom */
+  #app[data-size="compact"] :is(.pop .row button, #gloss .close) { min-height: 46px; }
+  #app[data-size="compact"] #gloss .close { min-width: 46px; }
 }
 @media (prefers-reduced-motion: reduce) { * { scroll-behavior: auto; } }
 
@@ -217,8 +246,8 @@ input[type="range"] { accent-color: var(--accent); flex: 1; min-width: 80px; }
 #app[data-font="plex"] { --ui: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif; }
 #app[data-font="atkinson"] { --ui: "Atkinson Hyperlegible", system-ui, -apple-system, "Segoe UI", sans-serif; }
 #app[data-font="serif"] :is(h1, #card h2, .quizq) { font-family: "Source Serif 4", Georgia, "Times New Roman", serif; font-weight: 600; letter-spacing: 0; }
-#app[data-size="compact"] :is(#rail, #card, #views, #note, #tip, #start, #maker) { zoom: .88; }
-#app[data-size="large"] :is(#rail, #card, #views, #note, #tip, #start, #maker) { zoom: 1.15; }
+#app[data-size="compact"] :is(#rail, #card, #views, #note, #tip, #start, #maker, #welcome, #gloss) { zoom: .88; }
+#app[data-size="large"] :is(#rail, #card, #views, #note, #tip, #start, #maker, #welcome, #gloss) { zoom: 1.15; }
 #app[data-card="drawer"] #card { left: auto; right: 0; top: 0; bottom: 0; width: min(340px, 88%); max-height: none; border-radius: 0; border-width: 0 0 0 1px; padding: 18px 18px; }
 #app[data-card="drawer"] #views { right: auto; left: 12px; justify-content: flex-start; }
 #app[data-card="drawer"] #note { top: 56px; }
@@ -236,6 +265,9 @@ input[type="range"] { accent-color: var(--accent); flex: 1; min-width: 80px; }
   #app[data-layout="dock"] .head { border-bottom: 0; padding: 10px 18px 4px; display: flex; align-items: baseline; gap: 12px; }
   #app[data-layout="dock"] .head h1 { margin: 0; font-size: 17px; }
   #app[data-layout="dock"] .head .sub { display: none; }
+  #app[data-layout="dock"] #gloss-open { margin: 0; }
+  #app[data-layout="dock"] #welcome { top: calc(50% - 30px); max-height: calc(100% - 100px); }   /* the credit line sits at the foot of the 3D view here: keep clear of it */
+  #app[data-layout="dock"] #gloss { max-height: calc(100% - 96px); }
   #app[data-layout="dock"] .tabs { padding: 4px 12px 0; width: 320px; }
   #app[data-layout="dock"] .pane { grid-column: 1 / -1; flex-direction: row; overflow-x: auto; overflow-y: hidden; padding: 12px 18px; gap: 20px; min-width: 0; contain: inline-size; }
   #app[data-layout="dock"] .pane > * { flex: 1 1 240px; min-width: 190px; max-width: 340px; max-height: 100%; overflow-y: auto; align-content: start; }
@@ -289,6 +321,8 @@ body{overflow:auto;height:auto}#app.sg{height:auto;min-height:100%;display:block
     <div class="tabs sg-tabs" role="tablist"><button class="tab" role="tab" aria-selected="true" type="button">Tracts</button><button class="tab" role="tab" aria-selected="false" type="button">Wiring</button><button class="tab" role="tab" aria-selected="false" type="button">Quiz</button></div>
     <div class="seg"><button type="button" aria-pressed="true">By tract</button><button type="button" aria-pressed="false">By direction</button></div>
     <div class="chips"><button class="chip" type="button" aria-pressed="true">Association <b>34</b></button><button class="chip" type="button" aria-pressed="false">Commissural <b>2</b></button><button class="chip" type="button" aria-pressed="true">Cerebellar <b>7</b></button></div>
+    <div class="chips fams"><div class="fam"><button class="chip" type="button" aria-pressed="true" aria-describedby="sg-fam1">Association <b>34</b></button><span class="hint" id="sg-fam1">Join areas on the same side of the brain.</span></div><div class="fam"><button class="chip" type="button" aria-pressed="false" aria-describedby="sg-fam2">Commissural <b>2</b></button><span class="hint" id="sg-fam2">Cross between the left and right halves of the brain.</span></div></div>
+    <p class="hint">Family chips in the panel carry their one-line meaning under them (hint text, indented to the chip's words).</p>
     <label class="check"><input type="checkbox" checked> Outline (estimated from the tracts)</label>
     <div class="row"><span class="label">Opacity</span><input type="range" min="0" max="100" value="40" aria-label="Opacity"></div>
     <input id="search" type="search" placeholder="Search tracts" aria-label="Search tracts">
@@ -310,6 +344,24 @@ body{overflow:auto;height:auto}#app.sg{height:auto;min-height:100%;display:block
   <section class="sg-sec" aria-labelledby="sg-quiz">
     <h2 id="sg-quiz" class="label">Quiz answers</h2>
     <div class="opts sg-opts"><button type="button">Not chosen</button><button type="button" class="right">Right answer</button><button type="button" class="wrong">Wrong answer</button><button type="button" disabled>Disabled</button></div>
+  </section>
+
+  <section class="sg-sec" aria-labelledby="sg-pops">
+    <h2 id="sg-pops" class="label">Floating panels: welcome and word list</h2>
+    <p class="hint">Panel colour with the stronger hairline, 12 px corners and a soft shadow. Over the 3D view they never cover the credit line. On phones their buttons are at least 40 px tall.</p>
+    <div class="pop" style="max-width:440px">
+      <h2>Welcome to Tract Explorer</h2>
+      <div style="display:flex;flex-direction:column;gap:6px"><p>A brain tract is a bundle of nerve fibres that carries signals between parts of the brain.</p><p>This site is a learning tool for seeing them in 3D, not for diagnosis.</p></div>
+      <div class="row"><button class="primary" type="button">Start exploring</button><button class="mini" type="button">Words explained</button></div>
+    </div>
+    <div class="pop" style="max-width:480px;position:relative">
+      <button class="close" type="button" aria-label="Close the word list">×</button>
+      <h2 style="padding-right:30px">Words explained</h2>
+      <dl class="gloss">
+        <div><dt>Streamline <span>· traced fibre line</span></dt><dd>A line traced along the fibres, worked out from a diffusion scan.</dd></div>
+        <div><dt>Voxel <span>· 3D pixel</span></dt><dd>A tiny cube of the scan, often about 2 mm across.</dd></div>
+      </dl>
+    </div>
   </section>
 
   <section class="sg-sec" aria-labelledby="sg-surfaces">
