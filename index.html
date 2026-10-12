@@ -82,6 +82,9 @@ input[type="range"] { accent-color: var(--accent); flex: 1; min-width: 80px; }
 .item .sw { width: 10px; height: 10px; border-radius: 50%; flex: none; }
 .item button { flex: 1; min-width: 0; text-align: left; background: none; border: 0; padding: 2px 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .item .side { font: 500 10.5px var(--mono); color: var(--muted); flex: none; }
+.item .use { flex: none; font-size: 11.5px; line-height: 1.35; color: var(--soft); border: 1px solid var(--line-2); border-radius: 999px; padding: 0 7px; white-space: nowrap; }   /* the word a tract was found by, when the search matched what it does */
+.nomatch { display: flex; flex-direction: column; gap: 8px; padding: 6px 8px; }
+.sugg { gap: 6px; }
 .mini { background: none; border: 1px solid var(--line); border-radius: 6px; padding: 4px 9px; color: var(--muted); font-size: 12.5px; }
 .mini:hover, .chip:hover, .seg button:hover { color: var(--text); }
 .foot { color: var(--muted); font-size: 11.5px; border-top: 1px solid var(--line); padding: 10px 18px; }
@@ -220,9 +223,10 @@ input[type="range"] { accent-color: var(--accent); flex: 1; min-width: 80px; }
   #gloss-open { margin: 0; position: relative; }
   #gloss-open::after { content: ""; position: absolute; left: 0; right: 0; top: 50%; height: 40px; transform: translateY(-50%); }   /* a 40 px tap area without making the panel's top bar taller */
   .pop .row button { min-height: 40px; }
+  .sugg .mini { min-height: 40px; }
   #gloss .close { min-width: 40px; min-height: 40px; top: 4px; right: 4px; }
   #app[data-size="compact"] #gloss-open::after { height: 46px; }   /* still 40 px on screen after the compact zoom */
-  #app[data-size="compact"] :is(.pop .row button, #gloss .close) { min-height: 46px; }
+  #app[data-size="compact"] :is(.pop .row button, #gloss .close, .sugg .mini) { min-height: 46px; }
   #app[data-size="compact"] #gloss .close { min-width: 46px; }
 }
 @media (prefers-reduced-motion: reduce) { * { scroll-behavior: auto; } }
@@ -330,7 +334,7 @@ input[type="range"] { accent-color: var(--accent); flex: 1; min-width: 80px; }
       </div>
       <div class="group" id="g-tracts">
         <div class="row" style="justify-content:space-between"><div class="label">Tracts</div><div class="row" style="gap:6px"><button class="mini" id="show-main" type="button">Main</button><button class="mini" id="show-all" type="button">All</button><button class="mini" id="show-none" type="button">None</button></div></div>
-        <input id="search" type="search" placeholder="Search tracts" aria-label="Search tracts">
+        <input id="search" type="search" placeholder="Search by name or what it does" aria-label="Search tracts by name or by what they do">
         <div id="list"></div>
       </div>
     </div>
@@ -2947,6 +2951,78 @@ var SYSTEMS = [
   ['vision', 'Vision', ['CNII', 'OpticRadiation', 'InferiorLongitudinalFasciculus', 'VerticalOccipitalFasciculus']],
   ['memory', 'Memory and emotion', ['Fornix', 'Cingulum', 'UncinateFasciculus', 'HippocampusAlveus']]
 ];
+/* Finding a tract by what it does, in the search box. Each line: the word shown beside a tract found this way, other words that find it too,
+   and tracts linked here that ROLE and SYSTEMS above do not link already. A tract is found by a line when its ROLE words include the word or
+   one of the others, when it is in the SYSTEMS group of that name, or when it is listed here. Only links the anatomy supports (test_content.js
+   checks them). The first lines are the ones suggested when nothing matches. */
+var USES = [
+  ['language', [], []],
+  ['memory', ['memories', 'remembering'], []],
+  ['vision', ['sight', 'seeing'], []],
+  ['movement', ['moving', 'motor'], ['Cerebellum', 'InferiorCerebellarPeduncle', 'NonDecussatingDentatorubrothalamicTract', 'ReticulospinalTract', 'Vermis']],
+  ['hearing', ['sound', 'sounds'], []],
+  ['touch', ['sensation'], []],
+  ['balance', [], ['Vermis']],
+  ['emotion', ['emotions'], []],
+  ['speech', ['speaking', 'talking'], ['CorticobulbarTract']],
+  ['reading', [], []],
+  ['meaning', [], []],
+  ['coordination', [], ['InferiorCerebellarPeduncle', 'MiddleCerebellarPeduncle', 'SuperiorCerebellarPeduncle', 'CorticopontineTract']],
+  ['posture', [], []],
+  ['walking', ['gait'], ['Vermis', 'ReticulospinalTract']],
+  ['attention', [], []],
+  ['faces', ['recognising faces'], []],
+  ['smell', [], ['AnteriorCommissure']],
+  ['taste', [], ['CNVII']],
+  ['chewing', [], ['CNV']],
+  ['habits', ['actions'], []],
+  ['reward', ['motivation'], []],
+  ['alertness', [], []]
+];
+/* The search rules. Kept apart from the page so test_content.js can run them on the sample tracts. */
+var FIND = {
+  /* the rule from before, unchanged: any part of the name, the side or the label in the file */
+  byName: function (B, q) { return (B.meta.name + ' ' + B.meta.side + ' ' + B.d.id).toLowerCase().indexOf(q) >= 0; },
+  /* for each kind of tract, the USES lines that find it, in the order of USES */
+  links: function (USES, ROLE, SYSTEMS) {
+    var out = {};
+    USES.forEach(function (u, i) {
+      var words = [u[0]].concat(u[1]), bases = u[2].slice();
+      Object.keys(ROLE).forEach(function (b) { if (words.some(function (w) { return (' ' + ROLE[b] + ' ').indexOf(' ' + w + ' ') >= 0; })) bases.push(b); });
+      SYSTEMS.forEach(function (s) { if (s[0] === u[0]) bases = bases.concat(s[2]); });
+      bases.forEach(function (b) { out[b] = out[b] || []; if (out[b].indexOf(i) < 0) out[b].push(i); });
+    });
+    return out;
+  },
+  /* the USES lines a search finds: from 3 letters, at the start of one of their words, so "mem" finds memory and "ory" does not */
+  lines: function (USES, q) {
+    var out = [];
+    if (q.length >= 3) USES.forEach(function (u, i) { if ([u[0]].concat(u[1]).some(function (w) { return (' ' + w).indexOf(' ' + q) >= 0; })) out.push(i); });
+    return out;
+  },
+  /* one tract: -1 when found by name (or the search is empty), the USES line when found by what it does, null when not found */
+  one: function (B, q, lines, links) {
+    if (!q || this.byName(B, q)) return -1;
+    var mine = links[B.meta.base] || [];
+    for (var i = 0; i < mine.length; i++) if (lines.indexOf(mine[i]) >= 0) return mine[i];
+    return null;
+  },
+  /* when nothing matches: up to five USES lines that would find something (finds(i) says which), a near miss of the search first */
+  suggest: function (USES, q, finds) {
+    function dist(a, b) {
+      var d = [], i, j; for (i = 0; i <= a.length; i++) d[i] = [i]; for (j = 1; j <= b.length; j++) d[0][j] = j;
+      for (i = 1; i <= a.length; i++) for (j = 1; j <= b.length; j++) d[i][j] = Math.min(d[i - 1][j] + 1, d[i][j - 1] + 1, d[i - 1][j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+      return d[a.length][b.length];
+    }
+    var near = [], rest = [], most = q.length <= 4 ? 1 : 2;
+    USES.forEach(function (u, i) {
+      if (!finds(i)) return;
+      var close = q.length >= 3 && [u[0]].concat(u[1]).some(function (w) { return dist(q, w) <= most || dist(q, w.slice(0, q.length)) <= most; });
+      (close ? near : rest).push(i);
+    });
+    return near.concat(rest).slice(0, 5);
+  }
+};
 /* the first-visit welcome, and the word list opened from the panel (both checked by test_content.js) */
 var WELCOME = { title: 'Welcome to Tract Explorer', lines: ['A brain tract is a bundle of nerve fibres that carries signals between parts of the brain.', 'This site is a learning tool for seeing them in 3D, not for diagnosis.', 'You can explore the tracts, test yourself in the quiz, or make tracts from your own diffusion MRI scan.'], go: 'Start exploring', words: 'Words explained' };
 var GLOSSARY = [
@@ -3144,24 +3220,32 @@ function buildFamilies() {
     row.appendChild(b); row.appendChild(line); el.appendChild(row);
   });
 }
+var LINKS = null;                                         /* which USES lines find each kind of tract, worked out once */
+function listed(B) { return S.fam[B.meta.fam] && (S.hemi === 'B' || !B.meta.side || B.meta.side === S.hemi); }
 function buildList() {
-  var q = $('search').value.trim().toLowerCase(), el = $('list'); el.innerHTML = '';
-  bundles.forEach(function (B) {
+  var typed = $('search').value.trim(), q = typed.toLowerCase(), lines = FIND.lines(USES, q), el = $('list'); el.innerHTML = '';
+  if (!LINKS) LINKS = FIND.links(USES, ROLE, SYSTEMS);
+  bundles.forEach(function (B, n) {
     B.row = null;
-    if (!S.fam[B.meta.fam]) return;
-    if (S.hemi !== 'B' && B.meta.side && B.meta.side !== S.hemi) return;
-    if (q && (B.meta.name + ' ' + B.meta.side + ' ' + B.d.id).toLowerCase().indexOf(q) < 0) return;
+    if (!listed(B)) return;
+    var found = FIND.one(B, q, lines, LINKS); if (found === null) return;
     var row = document.createElement('div'); row.className = 'item' + (B.meta.part && !B.meta.main ? ' part' : '') + (S.sel === B ? ' sel' : '');
     var cb = document.createElement('input'); cb.type = 'checkbox'; cb.checked = B.on; cb.setAttribute('aria-label', 'Show ' + B.meta.name + ' ' + B.meta.side);
     cb.onchange = function () { B.on = cb.checked; refresh(); };
     var sw = document.createElement('span'); sw.className = 'sw'; sw.style.background = B.col;
     var bt = document.createElement('button'); bt.type = 'button'; bt.textContent = B.meta.name; bt.title = B.meta.name;
-    if (DES.words === 'plain' && ROLE[B.meta.base] && !B.meta.part) { var rl = document.createElement('span'); rl.className = 'role'; rl.textContent = ' · ' + ROLE[B.meta.base]; bt.appendChild(rl); }
+    if (DES.words === 'plain' && found < 0 && ROLE[B.meta.base] && !B.meta.part) { var rl = document.createElement('span'); rl.className = 'role'; rl.textContent = ' · ' + ROLE[B.meta.base]; bt.appendChild(rl); }
     bt.onclick = function () { select(S.sel === B ? null : B); };
     var sd = document.createElement('span'); sd.className = 'side'; sd.textContent = B.meta.side;
-    row.appendChild(cb); row.appendChild(sw); row.appendChild(bt); row.appendChild(sd); el.appendChild(row); B.row = row;
+    row.appendChild(cb); row.appendChild(sw); row.appendChild(bt);
+    if (found >= 0) { var tag = document.createElement('span'); tag.className = 'use'; tag.id = 'use-' + n; tag.textContent = USES[found][0]; bt.setAttribute('aria-describedby', tag.id); row.appendChild(tag); }   /* found by what it does: say which word */
+    row.appendChild(sd); el.appendChild(row); B.row = row;
   });
-  if (!el.children.length) el.innerHTML = '<p class="hint" style="padding:6px 8px">No tracts match.</p>';
+  if (el.children.length) return;
+  var sug = q ? FIND.suggest(USES, q, function (i) { return bundles.some(function (B) { return listed(B) && (LINKS[B.meta.base] || []).indexOf(i) >= 0; }); }) : [];
+  el.innerHTML = '<div class="nomatch"><p class="hint">No tracts match' + (q ? ' “' + esc(typed) + '”' : '') + '.' + (sug.length ? ' Try a word for what a tract does:' : '') + '</p>' +
+    (sug.length ? '<div class="row sugg">' + sug.map(function (i) { return '<button class="mini" type="button">' + esc(USES[i][0]) + '</button>'; }).join('') + '</div>' : '') + '</div>';
+  Array.prototype.forEach.call(el.querySelectorAll('.sugg button'), function (b) { b.onclick = function () { $('search').value = b.textContent; buildList(); $('search').focus({ preventScroll: true }); }; });
 }
 function select(B) {
   S.sel = B; if (B) { B.on = true; B.twinShown = null; }
@@ -3722,19 +3806,20 @@ async function saveMade() {
 
 /* ---------- regions on the model: start in, pass through, avoid, end in, stop at ---------- */
 var REG = { list: [], placing: false }, regionGroup = new THREE.Group(); world.add(regionGroup);
-var ROLE = { pass: ['Must pass through', 0xf0b45c], avoid: ['Must avoid', 0xef6b6b], seed: ['Start here', 0x5fd08f], end: ['Must end here', 0x5fb0f0], stop: ['Stop here', 0xc792ea] };
+/* what each region does. Not called ROLE: that name holds the tract words at the top, and a second "var ROLE" here used to replace them */
+var REG_ROLE = { pass: ['Must pass through', 0xf0b45c], avoid: ['Must avoid', 0xef6b6b], seed: ['Start here', 0x5fd08f], end: ['Must end here', 0x5fb0f0], stop: ['Stop here', 0xc792ea] };
 function regionsOn() { return !!(SCAN && D && D.meta && D.meta.trackedHere && !D.meta.namedHere && SCAN.base); }
 function toModel(c) { var k = D.meta.ctr; return [c[0] - k[0], c[2] - k[2], -(c[1] - k[1])]; }             /* scan millimetres -> where it is drawn */
 function fromModel(p) { var k = D.meta.ctr; return [p.x + k[0], -p.z + k[1], p.y + k[2]]; }
 function drawRegions() {
   while (regionGroup.children.length) { var m0 = regionGroup.children[0]; regionGroup.remove(m0); m0.geometry.dispose(); m0.material.dispose(); }
   if (!regionsOn() || !D.meta.ctr) { need = true; return; }
-  REG.list.forEach(function (r) { var mesh = new THREE.Mesh(new THREE.SphereGeometry(r.radius, 24, 16), new THREE.MeshBasicMaterial({ color: ROLE[r.role][1], transparent: true, opacity: 0.32, depthWrite: false })), p = toModel(r.center); mesh.position.set(p[0], p[1], p[2]); regionGroup.add(mesh); });
+  REG.list.forEach(function (r) { var mesh = new THREE.Mesh(new THREE.SphereGeometry(r.radius, 24, 16), new THREE.MeshBasicMaterial({ color: REG_ROLE[r.role][1], transparent: true, opacity: 0.32, depthWrite: false })), p = toModel(r.center); mesh.position.set(p[0], p[1], p[2]); regionGroup.add(mesh); });
   need = true;
 }
 function regionRows() {
   var box = $('g-regions'); if (!box) return; var on = regionsOn(); box.hidden = !on; if (!on) { REG.placing = false; return; }
-  $('rg-list').innerHTML = REG.list.map(function (r, i) { return '<div class="rg-row"><i style="background:#' + ('00000' + ROLE[r.role][1].toString(16)).slice(-6) + '"></i><select data-i="' + i + '" aria-label="What region ' + (i + 1) + ' does">' + Object.keys(ROLE).map(function (k) { return '<option value="' + k + '"' + (k === r.role ? ' selected' : '') + '>' + ROLE[k][0] + '</option>'; }).join('') + '</select><input type="range" data-i="' + i + '" min="3" max="30" step="1" value="' + r.radius + '" aria-label="Size of region ' + (i + 1) + '"><output>' + r.radius + ' mm</output><button class="mini" type="button" data-i="' + i + '" aria-label="Remove region ' + (i + 1) + '">×</button></div>'; }).join('');
+  $('rg-list').innerHTML = REG.list.map(function (r, i) { return '<div class="rg-row"><i style="background:#' + ('00000' + REG_ROLE[r.role][1].toString(16)).slice(-6) + '"></i><select data-i="' + i + '" aria-label="What region ' + (i + 1) + ' does">' + Object.keys(REG_ROLE).map(function (k) { return '<option value="' + k + '"' + (k === r.role ? ' selected' : '') + '>' + REG_ROLE[k][0] + '</option>'; }).join('') + '</select><input type="range" data-i="' + i + '" min="3" max="30" step="1" value="' + r.radius + '" aria-label="Size of region ' + (i + 1) + '"><output>' + r.radius + ' mm</output><button class="mini" type="button" data-i="' + i + '" aria-label="Remove region ' + (i + 1) + '">×</button></div>'; }).join('');
   Array.prototype.forEach.call($('rg-list').querySelectorAll('select'), function (s) { s.onchange = function () { REG.list[+s.getAttribute('data-i')].role = s.value; regionRows(); drawRegions(); }; });
   Array.prototype.forEach.call($('rg-list').querySelectorAll('input'), function (s) { s.oninput = function () { var r = REG.list[+s.getAttribute('data-i')]; r.radius = +s.value; s.nextSibling.textContent = r.radius + ' mm'; drawRegions(); }; });
   Array.prototype.forEach.call($('rg-list').querySelectorAll('button'), function (b) { b.onclick = function () { REG.list.splice(+b.getAttribute('data-i'), 1); regionRows(); drawRegions(); }; });

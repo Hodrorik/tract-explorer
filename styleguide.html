@@ -82,6 +82,9 @@ input[type="range"] { accent-color: var(--accent); flex: 1; min-width: 80px; }
 .item .sw { width: 10px; height: 10px; border-radius: 50%; flex: none; }
 .item button { flex: 1; min-width: 0; text-align: left; background: none; border: 0; padding: 2px 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .item .side { font: 500 10.5px var(--mono); color: var(--muted); flex: none; }
+.item .use { flex: none; font-size: 11.5px; line-height: 1.35; color: var(--soft); border: 1px solid var(--line-2); border-radius: 999px; padding: 0 7px; white-space: nowrap; }   /* the word a tract was found by, when the search matched what it does */
+.nomatch { display: flex; flex-direction: column; gap: 8px; padding: 6px 8px; }
+.sugg { gap: 6px; }
 .mini { background: none; border: 1px solid var(--line); border-radius: 6px; padding: 4px 9px; color: var(--muted); font-size: 12.5px; }
 .mini:hover, .chip:hover, .seg button:hover { color: var(--text); }
 .foot { color: var(--muted); font-size: 11.5px; border-top: 1px solid var(--line); padding: 10px 18px; }
@@ -220,9 +223,10 @@ input[type="range"] { accent-color: var(--accent); flex: 1; min-width: 80px; }
   #gloss-open { margin: 0; position: relative; }
   #gloss-open::after { content: ""; position: absolute; left: 0; right: 0; top: 50%; height: 40px; transform: translateY(-50%); }   /* a 40 px tap area without making the panel's top bar taller */
   .pop .row button { min-height: 40px; }
+  .sugg .mini { min-height: 40px; }
   #gloss .close { min-width: 40px; min-height: 40px; top: 4px; right: 4px; }
   #app[data-size="compact"] #gloss-open::after { height: 46px; }   /* still 40 px on screen after the compact zoom */
-  #app[data-size="compact"] :is(.pop .row button, #gloss .close) { min-height: 46px; }
+  #app[data-size="compact"] :is(.pop .row button, #gloss .close, .sugg .mini) { min-height: 46px; }
   #app[data-size="compact"] #gloss .close { min-width: 46px; }
 }
 @media (prefers-reduced-motion: reduce) { * { scroll-behavior: auto; } }
@@ -325,7 +329,7 @@ body{overflow:auto;height:auto}#app.sg{height:auto;min-height:100%;display:block
     <p class="hint">Family chips in the panel carry their one-line meaning under them (hint text, indented to the chip's words).</p>
     <label class="check"><input type="checkbox" checked> Outline (estimated from the tracts)</label>
     <div class="row"><span class="label">Opacity</span><input type="range" min="0" max="100" value="40" aria-label="Opacity"></div>
-    <input id="search" type="search" placeholder="Search tracts" aria-label="Search tracts">
+    <input id="search" type="search" placeholder="Search by name or what it does" aria-label="Search tracts by name or by what they do">
     <p class="hint">Focus ring: press Tab to move through the controls above. Every control shows a 2 px accent outline when focused from the keyboard.</p>
   </section>
 
@@ -335,7 +339,11 @@ body{overflow:auto;height:auto}#app.sg{height:auto;min-height:100%;display:block
       <div class="item sel"><input type="checkbox" checked aria-label="Show"><span class="sw" style="background:#e45756"></span><button type="button">Arcuate fasciculus</button><span class="side">L</span></div>
       <div class="item"><input type="checkbox" checked aria-label="Show"><span class="sw" style="background:#4c78a8"></span><button type="button">Corpus callosum</button><span class="side"></span></div>
       <div class="item part"><input type="checkbox" aria-label="Show"><span class="sw" style="background:#72b7b2"></span><button type="button">Superior longitudinal fasciculus, branch 1</button><span class="side">R</span></div>
+      <div class="item"><input type="checkbox" checked aria-label="Show"><span class="sw" style="background:#f58518"></span><button type="button" aria-describedby="sg-use1">Fornix</button><span class="use" id="sg-use1">memory</span><span class="side">L</span></div>
     </div>
+    <p class="hint">A tract found by what it does carries the word it was found by, in a small rounded tag after its name.</p>
+    <div class="sg-list"><div class="nomatch"><p class="hint">No tracts match “xyz”. Try a word for what a tract does:</p><div class="row sugg"><button class="mini" type="button">language</button><button class="mini" type="button">memory</button><button class="mini" type="button">vision</button><button class="mini" type="button">movement</button><button class="mini" type="button">hearing</button></div></div></div>
+    <p class="hint">When a search finds nothing, the list suggests words that do find tracts. On phones these buttons are at least 40 px tall.</p>
     <div class="stats"><div class="stat"><b>19.0</b><span>volume (mL)</span></div><div class="stat"><b>1,204</b><span>streamlines</span></div><div class="stat"><b>96</b><span>mean length (mm)</span></div><div class="stat"><b>0.48</b><span>mean FA</span></div></div>
     <div class="bars"><span>Left</span><div class="bar"><i style="width:70%"></i></div><span class="num">19.0 mL</span><span>Right</span><div class="bar"><i style="width:31%"></i></div><span class="num">8.3 mL</span></div>
     <div class="legend"><span><i style="background:#e45756"></i>left–right</span><span><i style="background:#54a24b"></i>front–back</span><span><i style="background:#4c78a8"></i>up–down</span></div>
