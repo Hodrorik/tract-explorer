@@ -154,7 +154,7 @@ input[type="range"] { accent-color: var(--accent); flex: 1; min-width: 80px; }
 #maker .mk-opt { display: flex; flex-direction: column; gap: 6px; }
 #maker .mk-opt label { font-weight: 600; }
 #maker .mk-opt small { color: var(--muted); font-size: 12.5px; }
-#maker .seg button:disabled { opacity: .45; cursor: default; }
+#maker .seg button:disabled, #maker button.mini:disabled, #maker .mk-foot button:disabled { opacity: .45; cursor: default; }
 #maker .mk-move { display: grid; grid-template-columns: auto minmax(0, 1fr); column-gap: 8px; row-gap: 2px; }
 #maker .mv-top { font: 500 11px var(--mono); color: var(--muted); align-self: start; }
 #maker .mv-plot { display: flex; align-items: flex-end; height: 64px; border-bottom: 1px solid var(--line-2); border-top: 1px dashed var(--line); }
@@ -181,6 +181,16 @@ input[type="range"] { accent-color: var(--accent); flex: 1; min-width: 80px; }
 #maker .mk-bar { height: 6px; border-radius: 3px; background: var(--panel-2); overflow: hidden; }
 #maker .mk-bar i { display: block; height: 100%; width: 0; background: var(--accent); }
 #maker .mk-stage { font-size: 13px; color: var(--soft); }
+/* the scan panel: the first step says which files are needed; the footer holds progress and the main buttons, and stays in view while the rest scrolls */
+#maker .mk-lead { color: var(--soft); }
+#maker .mk-need { margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 4px; color: var(--soft); }
+#maker .mk-need b { color: var(--text); }
+#maker .mk-scan .mini { padding: 1px 8px; margin-left: 2px; }
+#maker .mk-foot { position: sticky; bottom: -18px; margin: 0 -20px -18px; padding: 12px 20px 18px; background: var(--panel); border-top: 1px solid var(--line); display: flex; flex-direction: column; gap: 10px; z-index: 1; }
+#maker .mk-run { display: flex; flex-direction: column; gap: 6px; }
+#maker .mk-run.err .mk-bar { display: none; }
+#maker .mk-run.err .mk-stage { color: var(--text); border-left: 2px solid var(--bad); padding-left: 10px; }
+#mk-corr-run { display: contents; }
 #g-data .primary { padding: 7px 12px; font-size: 13px; }
 /* family chips, each with its one-line meaning under it */
 .chips.fams { flex-direction: column; flex-wrap: nowrap; align-items: flex-start; gap: 8px; }
@@ -194,7 +204,7 @@ input[type="range"] { accent-color: var(--accent); flex: 1; min-width: 80px; }
 .pop .row { gap: 8px; margin-top: 2px; }
 #wl-text { display: flex; flex-direction: column; gap: 6px; }
 #welcome { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); width: min(440px, calc(100% - 28px)); max-height: calc(100% - 24px); overflow-y: auto; z-index: 5; }
-#gloss { position: absolute; left: 50%; top: 12px; transform: translateX(-50%); width: min(480px, calc(100% - 24px)); max-height: calc(100% - 64px); overflow: hidden; z-index: 6; }
+#gloss { position: absolute; left: 50%; top: 12px; transform: translateX(-50%); width: min(480px, calc(100% - 24px)); max-height: calc(100% - 64px); overflow: hidden; z-index: 8; }   /* above the scan panel, which can open it too */
 #gloss h2 { padding-right: 30px; }
 #gloss .gloss { flex: 0 1 auto; min-height: 0; overflow-y: auto; }   /* the list scrolls; the title and close button stay in view */
 .gloss { margin: 0; display: flex; flex-direction: column; gap: 10px; }
@@ -221,12 +231,13 @@ input[type="range"] { accent-color: var(--accent); flex: 1; min-width: 80px; }
   #views { max-width: 60%; }
   #how { display: none; }
   #gloss-open { margin: 0; position: relative; }
-  #gloss-open::after { content: ""; position: absolute; left: 0; right: 0; top: 50%; height: 40px; transform: translateY(-50%); }   /* a 40 px tap area without making the panel's top bar taller */
-  .pop .row button { min-height: 40px; }
+  #gloss-open::after, #mk-words::after { content: ""; position: absolute; left: 0; right: 0; top: 50%; height: 40px; transform: translateY(-50%); }   /* a 40 px tap area without making the panel's top bar (or the scan summary's line) taller */
+  #mk-words { position: relative; }
+  .pop .row button, #maker .mk-foot .row button { min-height: 40px; }
   .sugg .mini { min-height: 40px; }
   #gloss .close { min-width: 40px; min-height: 40px; top: 4px; right: 4px; }
-  #app[data-size="compact"] #gloss-open::after { height: 46px; }   /* still 40 px on screen after the compact zoom */
-  #app[data-size="compact"] :is(.pop .row button, #gloss .close, .sugg .mini) { min-height: 46px; }
+  #app[data-size="compact"] :is(#gloss-open, #mk-words)::after { height: 46px; }   /* still 40 px on screen after the compact zoom */
+  #app[data-size="compact"] :is(.pop .row button, #gloss .close, .sugg .mini, #maker .mk-foot .row button) { min-height: 46px; }
   #app[data-size="compact"] #gloss .close { min-width: 46px; }
 }
 @media (prefers-reduced-motion: reduce) { * { scroll-behavior: auto; } }
@@ -282,7 +293,7 @@ input[type="range"] { accent-color: var(--accent); flex: 1; min-width: 80px; }
   #app[data-layout="dock"] .foot { position: absolute; left: 0; bottom: 100%; max-width: min(640px, 52%); border-top: 0; padding: 0 18px 12px; line-height: 1.45; z-index: 1; }   /* the credit and "not a diagnostic image" sit at the foot of the 3D view, just above the panel */
 }
 
-body{overflow:auto;height:auto}#app.sg{height:auto;min-height:100%;display:block}.sg-main{max-width:980px;margin:0 auto;padding:28px 20px 60px;display:flex;flex-direction:column;gap:26px}.sg-head{display:flex;flex-direction:column;gap:8px}.sg-switch{gap:8px 12px;margin-top:6px}.sg-sec{display:flex;flex-direction:column;gap:12px;border-top:1px solid var(--line);padding-top:16px}.sg h2.label{margin:0}.sg #card.sg-static{position:static;width:auto;max-height:none;padding:14px 16px}.sg-tabs{max-width:420px;padding:0}.sg-list{max-width:420px;margin:0}.sg-swatches{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:10px}.sg-sw{display:grid;grid-template-columns:34px 1fr;gap:2px 10px;align-items:center}.sg-sw i{grid-row:span 2;width:34px;height:34px;border-radius:7px;border:1px solid var(--line-2)}.sg-sw b{font:500 12px var(--mono)}.sg-opts{max-width:420px}.sg-surfaces{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:10px}.sg-surfaces div{height:70px;border-radius:10px;padding:10px;font-size:12.5px;color:var(--muted)}.sg-static-foot{border-top:0;padding:0}</style>
+body{overflow:auto;height:auto}#app.sg{height:auto;min-height:100%;display:block}.sg-main{max-width:980px;margin:0 auto;padding:28px 20px 60px;display:flex;flex-direction:column;gap:26px}.sg-head{display:flex;flex-direction:column;gap:8px}.sg-switch{gap:8px 12px;margin-top:6px}.sg-sec{display:flex;flex-direction:column;gap:12px;border-top:1px solid var(--line);padding-top:16px}.sg h2.label{margin:0}.sg #card.sg-static{position:static;width:auto;max-height:none;padding:14px 16px}.sg-tabs{max-width:420px;padding:0}.sg-list{max-width:420px;margin:0}.sg-swatches{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:10px}.sg-sw{display:grid;grid-template-columns:34px 1fr;gap:2px 10px;align-items:center}.sg-sw i{grid-row:span 2;width:34px;height:34px;border-radius:7px;border:1px solid var(--line-2)}.sg-sw b{font:500 12px var(--mono)}.sg-opts{max-width:420px}.sg #maker.sg-static{position:relative;left:auto;top:auto;transform:none;width:auto;max-width:540px;max-height:380px;z-index:auto;box-shadow:none}.sg-surfaces{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:10px}.sg-surfaces div{height:70px;border-radius:10px;padding:10px;font-size:12.5px;color:var(--muted)}.sg-static-foot{border-top:0;padding:0}</style>
 </head>
 <body>
 <div id="app" class="sg" data-layout="rail" data-theme="studio" data-accent="amber" data-size="normal" data-card="float" data-font="atkinson">
@@ -369,6 +380,21 @@ body{overflow:auto;height:auto}#app.sg{height:auto;min-height:100%;display:block
         <div><dt>Streamline <span>· traced fibre line</span></dt><dd>A line traced along the fibres, worked out from a diffusion scan.</dd></div>
         <div><dt>Voxel <span>· 3D pixel</span></dt><dd>A tiny cube of the scan, often about 2 mm across.</dd></div>
       </dl>
+    </div>
+  </section>
+
+  <section class="sg-sec" aria-labelledby="sg-scan">
+    <h2 id="sg-scan" class="label">Scan panel: what is needed, and its footer</h2>
+    <p class="hint">"Make tracts from a scan" opens this panel before the file picker. The footer holds the progress and the main buttons and stays at the foot of the panel while the rest scrolls (scroll this example). Progress sits next to the button that started it; a problem shows as a line marked in red instead of the bar. On phones the footer buttons are at least 40 px tall.</p>
+    <div id="maker" class="sg-static" role="group" aria-label="Example of the scan panel">
+      <div class="eyebrow">DIFFUSION SCAN</div>
+      <h2>Make tracts from a scan</h2>
+      <p class="mk-lead">You need a diffusion MRI scan. It measures how water moves in the brain. Water moves most easily along the fibres, so the scan shows which way they run.</p>
+      <div class="mk-opt"><label>Choose these three files together:</label><ul class="mk-need"><li><b>The scan itself:</b> a .nii or .nii.gz file</li><li><b>Its .bval file:</b> the scan strength (b-value) of each image</li><li><b>Its .bvec file:</b> the direction measured in each image</li></ul></div>
+      <p class="hint">Files are read on this device and are not uploaded.</p>
+      <p class="mk-scan"><b>dwi.nii.gz</b><br>A grid of 96 × 96 × 60 tiny cubes (voxels), each 2.5 mm across.<br>65 images (volumes): 1 plain image (b = 0) and 64 at scan strength 1000 (b-value, in s/mm²). <button class="mini" type="button">Words explained</button></p>
+      <div class="mk-run err"><p class="mk-stage">A diffusion scan needs three files. Missing: the .bvec file. Choose all three files together.</p></div>
+      <div class="mk-foot"><div class="mk-run"><div class="mk-bar"><i style="width:40%"></i></div><p class="mk-stage">Working out the fibre directions: 40% of the brain</p></div><div class="row"><button class="primary" type="button" disabled>Choose the three files</button><button class="mini" type="button">Stop</button></div></div>
     </div>
   </section>
 

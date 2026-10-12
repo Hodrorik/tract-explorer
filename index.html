@@ -154,7 +154,7 @@ input[type="range"] { accent-color: var(--accent); flex: 1; min-width: 80px; }
 #maker .mk-opt { display: flex; flex-direction: column; gap: 6px; }
 #maker .mk-opt label { font-weight: 600; }
 #maker .mk-opt small { color: var(--muted); font-size: 12.5px; }
-#maker .seg button:disabled { opacity: .45; cursor: default; }
+#maker .seg button:disabled, #maker button.mini:disabled, #maker .mk-foot button:disabled { opacity: .45; cursor: default; }
 #maker .mk-move { display: grid; grid-template-columns: auto minmax(0, 1fr); column-gap: 8px; row-gap: 2px; }
 #maker .mv-top { font: 500 11px var(--mono); color: var(--muted); align-self: start; }
 #maker .mv-plot { display: flex; align-items: flex-end; height: 64px; border-bottom: 1px solid var(--line-2); border-top: 1px dashed var(--line); }
@@ -181,6 +181,16 @@ input[type="range"] { accent-color: var(--accent); flex: 1; min-width: 80px; }
 #maker .mk-bar { height: 6px; border-radius: 3px; background: var(--panel-2); overflow: hidden; }
 #maker .mk-bar i { display: block; height: 100%; width: 0; background: var(--accent); }
 #maker .mk-stage { font-size: 13px; color: var(--soft); }
+/* the scan panel: the first step says which files are needed; the footer holds progress and the main buttons, and stays in view while the rest scrolls */
+#maker .mk-lead { color: var(--soft); }
+#maker .mk-need { margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 4px; color: var(--soft); }
+#maker .mk-need b { color: var(--text); }
+#maker .mk-scan .mini { padding: 1px 8px; margin-left: 2px; }
+#maker .mk-foot { position: sticky; bottom: -18px; margin: 0 -20px -18px; padding: 12px 20px 18px; background: var(--panel); border-top: 1px solid var(--line); display: flex; flex-direction: column; gap: 10px; z-index: 1; }
+#maker .mk-run { display: flex; flex-direction: column; gap: 6px; }
+#maker .mk-run.err .mk-bar { display: none; }
+#maker .mk-run.err .mk-stage { color: var(--text); border-left: 2px solid var(--bad); padding-left: 10px; }
+#mk-corr-run { display: contents; }
 #g-data .primary { padding: 7px 12px; font-size: 13px; }
 /* family chips, each with its one-line meaning under it */
 .chips.fams { flex-direction: column; flex-wrap: nowrap; align-items: flex-start; gap: 8px; }
@@ -194,7 +204,7 @@ input[type="range"] { accent-color: var(--accent); flex: 1; min-width: 80px; }
 .pop .row { gap: 8px; margin-top: 2px; }
 #wl-text { display: flex; flex-direction: column; gap: 6px; }
 #welcome { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); width: min(440px, calc(100% - 28px)); max-height: calc(100% - 24px); overflow-y: auto; z-index: 5; }
-#gloss { position: absolute; left: 50%; top: 12px; transform: translateX(-50%); width: min(480px, calc(100% - 24px)); max-height: calc(100% - 64px); overflow: hidden; z-index: 6; }
+#gloss { position: absolute; left: 50%; top: 12px; transform: translateX(-50%); width: min(480px, calc(100% - 24px)); max-height: calc(100% - 64px); overflow: hidden; z-index: 8; }   /* above the scan panel, which can open it too */
 #gloss h2 { padding-right: 30px; }
 #gloss .gloss { flex: 0 1 auto; min-height: 0; overflow-y: auto; }   /* the list scrolls; the title and close button stay in view */
 .gloss { margin: 0; display: flex; flex-direction: column; gap: 10px; }
@@ -221,12 +231,13 @@ input[type="range"] { accent-color: var(--accent); flex: 1; min-width: 80px; }
   #views { max-width: 60%; }
   #how { display: none; }
   #gloss-open { margin: 0; position: relative; }
-  #gloss-open::after { content: ""; position: absolute; left: 0; right: 0; top: 50%; height: 40px; transform: translateY(-50%); }   /* a 40 px tap area without making the panel's top bar taller */
-  .pop .row button { min-height: 40px; }
+  #gloss-open::after, #mk-words::after { content: ""; position: absolute; left: 0; right: 0; top: 50%; height: 40px; transform: translateY(-50%); }   /* a 40 px tap area without making the panel's top bar (or the scan summary's line) taller */
+  #mk-words { position: relative; }
+  .pop .row button, #maker .mk-foot .row button { min-height: 40px; }
   .sugg .mini { min-height: 40px; }
   #gloss .close { min-width: 40px; min-height: 40px; top: 4px; right: 4px; }
-  #app[data-size="compact"] #gloss-open::after { height: 46px; }   /* still 40 px on screen after the compact zoom */
-  #app[data-size="compact"] :is(.pop .row button, #gloss .close, .sugg .mini) { min-height: 46px; }
+  #app[data-size="compact"] :is(#gloss-open, #mk-words)::after { height: 46px; }   /* still 40 px on screen after the compact zoom */
+  #app[data-size="compact"] :is(.pop .row button, #gloss .close, .sugg .mini, #maker .mk-foot .row button) { min-height: 46px; }
   #app[data-size="compact"] #gloss .close { min-width: 46px; }
 }
 @media (prefers-reduced-motion: reduce) { * { scroll-behavior: auto; } }
@@ -639,7 +650,7 @@ var TractKit = (function () {
     FrontalAslantTract: ['Frontal aslant tract', 'A short oblique tract from the supplementary motor area to the inferior frontal gyrus. Involved in starting speech and verbal fluency.', 'Association'],
     HippocampusAlveus: ['Alveus', 'A thin layer of fibres on the surface of the hippocampus that gathers its output towards the fornix.', 'Association'],
     InferiorFrontoOccipitalFasciculus: ['Inferior fronto-occipital fasciculus', 'A long ventral pathway from the occipital lobe to the frontal lobe. Involved in reading, word meaning and visual attention.', 'Association'],
-    InferiorLongitudinalFasciculus: ['Inferior longitudinal fasciculus', 'Runs from the occipital lobe to the front of the temporal lobe. Involved in recognising objects and faces.', 'Association'],
+    InferiorLongitudinalFasciculus: ['Inferior longitudinal fasciculus', 'Runs from the occipital lobe to the front of the temporal lobe. Involved in recognising objects and faces, and in reading.', 'Association'],
     MiddleLongitudinalFasciculus: ['Middle longitudinal fasciculus', 'Runs from the superior temporal gyrus back to the parietal and occipital lobes. Involved in hearing and language.', 'Association'],
     ParietalAslantTract: ['Parietal aslant tract', 'A short vertical tract linking the upper and lower parts of the parietal lobe.', 'Association'],
     SuperiorLongitudinalFasciculus: ['Superior longitudinal fasciculus', 'The main frontal–parietal pathway, in three branches. Supports spatial attention and working memory.', 'Association'],
@@ -648,7 +659,7 @@ var TractKit = (function () {
     Cerebellum: ['Cerebellar hemisphere fibres', 'White matter inside the cerebellar hemisphere, carrying signals between its cortex and deep nuclei.', 'Cerebellum'],
     InferiorCerebellarPeduncle: ['Inferior cerebellar peduncle', 'Carries body-position signals from the spinal cord and medulla into the cerebellum.', 'Cerebellum'],
     MiddleCerebellarPeduncle: ['Middle cerebellar peduncle', 'The largest input to the cerebellum. Carries copies of cortical commands relayed through the pons.', 'Cerebellum'],
-    SuperiorCerebellarPeduncle: ['Superior cerebellar peduncle', 'The main output of the cerebellum, heading to the midbrain and thalamus.', 'Cerebellum'],
+    SuperiorCerebellarPeduncle: ['Superior cerebellar peduncle', 'The main output of the cerebellum, heading to the midbrain and thalamus. Some studies also tie it to balance, but this is debated.', 'Cerebellum'],
     Vermis: ['Vermis', 'Midline strip of the cerebellum. Controls posture and gait.', 'Cerebellum'],
     CorpusCallosum: ['Corpus callosum', 'The largest tract in the brain. Its fibres cross the midline to connect matching areas of the two hemispheres.', 'Commissure'],
     AnteriorCommissure: ['Anterior commissure', 'A small bundle crossing the midline just in front of the fornix. Links the two temporal lobes and the olfactory areas.', 'Commissure'],
@@ -662,7 +673,7 @@ var TractKit = (function () {
     AnsaSubthalamica: ['Ansa subthalamica', 'Fibres linking the globus pallidus and the subthalamic nucleus. Part of the basal ganglia movement circuit.', 'ProjectionBasalGanglia'],
     FasciculusSubthalamicus: ['Subthalamic fasciculus', 'Two-way link between the globus pallidus and the subthalamic nucleus, a key node in movement control.', 'ProjectionBasalGanglia'],
     FasciculusLenticularis: ['Lenticular fasciculus', 'Fibres leaving the globus pallidus and crossing the internal capsule on their way to the thalamus. Part of the basal ganglia output.', 'ProjectionBasalGanglia'],
-    CorticostriatalTract: ['Corticostriatal tract', 'Carries cortical signals into the striatum, the first step of the basal ganglia loops for action selection and habits.', 'ProjectionBasalGanglia'],
+    CorticostriatalTract: ['Corticostriatal tract', 'Carries cortical signals into the striatum, the first step of the basal ganglia loops that shape movement, habits and reward.', 'ProjectionBasalGanglia'],
     Fornix: ['Fornix', 'The main output of the hippocampus, arching forward to the mammillary bodies. Needed for forming new memories.', 'ProjectionBasalGanglia'],
     OpticRadiation: ['Optic radiation', 'Runs from the thalamus (lateral geniculate) to the primary visual cortex. The last step of the visual pathway.', 'ProjectionBasalGanglia'],
     ThalamicRadiation: ['Thalamic radiation', 'Two-way fibres between the thalamus and the cortex, fanning out through the internal capsule.', 'ProjectionBasalGanglia'],
@@ -674,7 +685,7 @@ var TractKit = (function () {
     MedialForebrainBundle: ['Medial forebrain bundle', 'Runs from the midbrain through the hypothalamus to the frontal lobe. Carries reward and motivation signals.', 'ProjectionBrainstem'],
     MedialLemniscus: ['Medial lemniscus', 'Carries touch and body-position signals up the brainstem to the thalamus.', 'ProjectionBrainstem'],
     ReticularTract: ['Reticular tract', 'Pathways of the reticular formation in the brainstem. Involved in arousal and posture.', 'ProjectionBrainstem'],
-    ReticulospinalTract: ['Reticulospinal tract', 'Runs from the reticular formation of the brainstem down to the spinal cord. Helps control posture and walking.', 'ProjectionBrainstem']
+    ReticulospinalTract: ['Reticulospinal tract', 'Runs from the reticular formation of the brainstem down to the spinal cord. Helps control posture, balance and walking.', 'ProjectionBrainstem']
   };
   var PART = {
     FrontalParahippocampal: 'frontal–parahippocampal part', FrontalParietal: 'frontal–parietal part', Parahippocampal: 'parahippocampal part', ParahippocampalParietal: 'parahippocampal–parietal part', Parolfactory: 'parolfactory part',
@@ -2954,30 +2965,31 @@ var SYSTEMS = [
 /* Finding a tract by what it does, in the search box. Each line: the word shown beside a tract found this way, other words that find it too,
    and tracts linked here that ROLE and SYSTEMS above do not link already. A tract is found by a line when its ROLE words include the word or
    one of the others, when it is in the SYSTEMS group of that name, or when it is listed here. Only links the anatomy supports (test_content.js
-   checks them). The first lines are the ones suggested when nothing matches. */
+   checks them); a link that is real but debated says so in the tract's description. The first lines are the ones suggested when nothing matches. */
 var USES = [
   ['language', [], []],
   ['memory', ['memories', 'remembering'], []],
   ['vision', ['sight', 'seeing'], []],
-  ['movement', ['moving', 'motor'], ['Cerebellum', 'InferiorCerebellarPeduncle', 'NonDecussatingDentatorubrothalamicTract', 'ReticulospinalTract', 'Vermis']],
+  ['movement', ['moving', 'motor'], ['Cerebellum', 'InferiorCerebellarPeduncle', 'NonDecussatingDentatorubrothalamicTract', 'ReticulospinalTract', 'Vermis', 'CorticostriatalTract']],
   ['hearing', ['sound', 'sounds'], []],
   ['touch', ['sensation'], []],
-  ['balance', [], ['Vermis']],
+  ['balance', [], ['Vermis', 'ReticulospinalTract', 'SuperiorCerebellarPeduncle']],
   ['emotion', ['emotions'], []],
   ['speech', ['speaking', 'talking'], ['CorticobulbarTract']],
-  ['reading', [], []],
+  ['reading', [], ['InferiorLongitudinalFasciculus']],
   ['meaning', [], []],
   ['coordination', [], ['InferiorCerebellarPeduncle', 'MiddleCerebellarPeduncle', 'SuperiorCerebellarPeduncle', 'CorticopontineTract']],
   ['posture', [], []],
   ['walking', ['gait'], ['Vermis', 'ReticulospinalTract']],
-  ['attention', [], []],
+  ['attention', [], ['Cingulum']],
   ['faces', ['recognising faces'], []],
   ['smell', [], ['AnteriorCommissure']],
   ['taste', [], ['CNVII']],
   ['chewing', [], ['CNV']],
-  ['habits', ['actions'], []],
-  ['reward', ['motivation'], []],
-  ['alertness', [], []]
+  ['habits', ['actions', 'habit learning'], []],
+  ['reward', ['motivation'], ['CorticostriatalTract']],
+  ['alertness', [], []],
+  ['working memory', [], ['SuperiorLongitudinalFasciculus']]
 ];
 /* The search rules. Kept apart from the page so test_content.js can run them on the sample tracts. */
 var FIND = {
@@ -3033,6 +3045,25 @@ var GLOSSARY = [
   ['b-value', 'scan strength', 'How strongly the scan is weighted by water movement. Most scans use 1000 to 3000 s/mm². Images with a b-value of 0 are plain images, used as a reference.'],
   ['Diffusion scan', '', 'An MRI scan that measures how water moves in the brain. Water moves most easily along the fibres, so the scan shows which way they run. It comes as a .nii or .nii.gz file with .bval and .bvec files.']
 ];
+/* "Make tracts from a scan" first says what is needed, then opens the file picker (checked by test_content.js) */
+var SCAN_NEED = {
+  title: 'Make tracts from a scan',
+  lead: 'You need a diffusion MRI scan. It measures how water moves in the brain. Water moves most easily along the fibres, so the scan shows which way they run.',
+  ask: 'Choose these three files together:',
+  files: [['The scan itself', 'a .nii or .nii.gz file'], ['Its .bval file', 'the scan strength (b-value) of each image'], ['Its .bvec file', 'the direction measured in each image']],
+  more: ['On a computer, hold Cmd or Ctrl to select more than one file.', 'An ordinary MRI picture, such as a T1 scan, cannot be used. It has no .bval or .bvec file.', 'Files are read on this device and are not uploaded.'],
+  go: 'Choose the three files'
+};
+/* The scan engine's notes about a scan, in plain words for the panel. The technical term stays in brackets for readers who know it.
+   test_content.js runs every note tracker.js can write through these. */
+var PLAIN_NOTES = [
+  [/^This scan has several b-values\. The tensor fit uses the ones up to (\d+),.*$/, 'This scan was made at several scan strengths (b-values). The one-direction model (tensor fit) uses those up to $1, where it describes the data best.'],
+  [/^This scan only has high b-values \(above (\d+)\)\..*$/, 'This scan was only made at high scan strengths (b-values above $1). The one-direction model (tensor fit) describes such scans only roughly, so treat its fibre scores (FA) with care.'],
+  [/^This scan has no volume without diffusion weighting \(b = 0\)\..*$/, 'This scan has no plain image (b = 0) to compare the others with. Tracts can still be made, but the fibre directions are less certain.'],
+  [/^This scan has (\d+) different diffusion directions\..*$/, 'This scan measures water movement in $1 directions. With fewer than about 30, most places where tracts cross cannot be told apart.'],
+  [/^(\d+)% of brain voxels gave a physically impossible tensor.*$/, 'In $1% of the brain, the one-direction model (tensor fit) gave a result that cannot happen in real tissue. That usually means noise, or head movement that has not been corrected.']
+];
+function plainNote(n) { for (var i = 0; i < PLAIN_NOTES.length; i++) if (PLAIN_NOTES[i][0].test(n)) return n.replace(PLAIN_NOTES[i][0], PLAIN_NOTES[i][1]); return n; }
 function W() { return WORDS[DES.words] || WORDS.standard; }
 function famName(f) { var w = W(); return (w.fam && w.fam[f]) || FAMILY[f][0]; }
 function bytes(b) { var s = atob(b), u = new Uint8Array(s.length); for (var i = 0; i < s.length; i++) u[i] = s.charCodeAt(i); return u; }
@@ -3428,8 +3459,9 @@ function closeWelcome(remember) {
   if (remember) { try { window.localStorage.setItem(WELCOME_KEY, '1'); } catch (e) {} }
   if (had) { var t = $('tabs').hidden ? $('open') : $('tab-' + S.mode); if (t) t.focus({ preventScroll: true }); }
 }
-function openGloss() {
-  var el = $('gloss');
+var glossFrom = null;                                    /* the button that opened the word list gets the focus back when it closes */
+function openGloss(from) {
+  var el = $('gloss'); glossFrom = from || null;
   if (!el.firstChild) {
     el.innerHTML = '<button class="close" type="button" aria-label="Close the word list">×</button><h2 id="gloss-title">Words explained</h2><p class="hint">Terms you will meet on this site, in everyday words.</p><dl class="gloss" tabindex="0">' +
       GLOSSARY.map(function (g) { return '<div><dt>' + esc(g[0]) + (g[1] ? ' <span>· ' + esc(g[1]) + '</span>' : '') + '</dt><dd>' + esc(g[2]) + '</dd></div>'; }).join('') + '</dl>';
@@ -3442,7 +3474,8 @@ function closeGloss() {
   var el = $('gloss'); if (el.hidden) return;
   var had = el.contains(document.activeElement);
   el.hidden = true; $('gloss-open').setAttribute('aria-expanded', 'false');
-  if (had) $('gloss-open').focus({ preventScroll: true });
+  if (had) ((glossFrom && document.body.contains(glossFrom) && glossFrom.offsetParent) ? glossFrom : $('gloss-open')).focus({ preventScroll: true });
+  glossFrom = null;
 }
 $('gloss-open').onclick = function () { if ($('gloss').hidden) { closeWelcome(false); openGloss(); } else closeGloss(); };
 
@@ -3455,6 +3488,7 @@ async function openFiles(fileList) {
   var files = Array.prototype.slice.call(fileList || []); if (!files.length || busy) return;
   closeWelcome(false);
   if (files.every(isScanFile)) return openScan(files);   /* a scan with its direction files: make tracts. Mixed with tract files: open the tracts and say why the scan was left */
+  if (MK.view === 'need') $('maker').hidden = true;      /* tract files chosen from the "what you need" step open as tract files */
   busy = true; var errors = [], added = [], t0 = Date.now(), perFile = Math.floor(20000 / files.length), thinned = 0, last = 0, badLen = false;
   for (var i = 0; i < files.length; i++) {
     var f = files[i];
@@ -3500,7 +3534,7 @@ $('open').onclick = $('empty-open').onclick = function () { $('pick').value = ''
 $('pick').onchange = function () { openFiles(this.files); };
 $('back').onclick = function () { USER = []; note(''); closeMaker(); forgetScan(); build(EMBED); };
 $('clear').onclick = function () { USER = []; note(''); closeMaker(); forgetScan(); build(null); refresh(); };
-$('scan').onclick = function () { $('pick').value = ''; $('pick').click(); note('<b>Choose three files together</b><span>The scan (.nii or .nii.gz) and its two direction files (.bval and .bvec). Hold Cmd or Ctrl to select more than one.</span>', false, true); };
+$('scan').onclick = scanNeed;
 $('remake').onclick = function () { if (SCAN) maker(); };
 var dragDepth = 0;
 function hasFiles(e) { var t = e.dataTransfer && e.dataTransfer.types; return t && Array.prototype.indexOf.call(t, 'Files') >= 0; }
@@ -3511,7 +3545,7 @@ window.addEventListener('drop', function (e) { if (!hasFiles(e)) return; e.preve
 
 /* ---------- making tracts from a diffusion scan ---------- */
 var SCAN = null;                                         /* the scan last opened: { name, model, info, check, flip, base (last whole-brain run), result (what is shown and saved), named (last named-tract run), shown } */
-var MK = { level: 'simple', what: 'whole', o: null, running: false, stop: false, c: { model: 'eddy', pe: 1, redraw: 'cubic', place: 'auto', slices: 'auto' } };   /* c = what the movement correction is allowed to change, and how it redraws */
+var MK = { level: 'simple', what: 'whole', o: null, running: false, stop: false, view: '', readStop: false, c: { model: 'eddy', pe: 1, redraw: 'cubic', place: 'auto', slices: 'auto' } };   /* c = what the movement correction is allowed to change, and how it redraws; view = what the panel shows: 'need' (what files to choose) or 'scan' (the settings) */
 var ATLAS = null;
 function atlas() {                                        /* the tract atlas used for naming, read once from the page */
   if (ATLAS === null) { ATLAS = false; try { var el = $('atlasref'), txt = el ? el.textContent.trim() : ''; if (txt.charAt(0) === '{' && typeof TractNamer !== 'undefined') ATLAS = TractNamer.loadAtlas(JSON.parse(txt)); } catch (e) { ATLAS = false; } }
@@ -3541,24 +3575,55 @@ function checkDirections(model) {
 }
 function stopName() { return '"Stop below anisotropy (' + (MK.o && MK.o.follow === 'gqi' ? 'QA' : 'FA') + ')"'; }
 
+/* Progress and problems show next to the button that started them: in the panel's footer for choosing files and "Make tracts",
+   under the button in the movement box for "Check and correct". The footer stays in view while the panel scrolls. */
+function footHtml(go, goId) {
+  return '<div class="mk-foot" id="mk-foot"><div id="mk-run" class="mk-run" hidden><div class="mk-bar"><i id="mk-prog"></i></div><p class="mk-stage" id="mk-stage" role="status"></p></div>' +
+    '<div class="row"><button class="primary" id="' + goId + '" type="button">' + esc(go) + '</button><button class="mini" id="mk-cancel" type="button">Cancel</button></div></div>';
+}
+function runAt(slot) { var r = $('mk-run'), s = $(slot); if (!r) return; if (s && r.parentNode !== s) s.insertBefore(r, s.firstChild); r.hidden = false; r.classList.remove('err'); $('mk-prog').style.width = '0%'; $('mk-stage').textContent = ''; }
+function runSay(text, bad) { var r = $('mk-run'); if (!r) return; r.hidden = false; r.classList.toggle('err', !!bad); $('mk-stage').textContent = text; }
+
+/* the first step: what files are needed. The file picker opens from here */
+function scanNeed() {
+  if (MK.running || busy) return;
+  closeWelcome(false); closeGloss(); note('');
+  var el = $('maker'), N = SCAN_NEED, h = '<button class="close" type="button" aria-label="Close">×</button><div class="eyebrow">DIFFUSION SCAN</div><h2 id="mk-title">' + esc(N.title) + '</h2>';
+  h += '<p class="mk-lead">' + esc(N.lead) + '</p><div class="mk-opt"><label>' + esc(N.ask) + '</label><ul class="mk-need">' + N.files.map(function (f) { return '<li><b>' + esc(f[0]) + ':</b> ' + esc(f[1]) + '</li>'; }).join('') + '</ul></div>';
+  h += N.more.map(function (t) { return '<p class="hint">' + esc(t) + '</p>'; }).join('') + footHtml(N.go, 'mk-choose');
+  el.innerHTML = h; el.hidden = false; MK.view = 'need'; el.scrollTop = 0;
+  el.querySelector('.close').onclick = $('mk-cancel').onclick = function () { if (busy) { MK.readStop = true; return; } el.hidden = true; $('scan').focus({ preventScroll: true }); };
+  $('mk-choose').onclick = function () { if (busy) return; $('pick').value = ''; $('pick').click(); };
+  $('mk-choose').focus({ preventScroll: true });
+}
+
 async function openScan(files) {
   if (busy || MK.running) return;
-  if (typeof TractEngine === 'undefined') { note('<b class="warn">Making tracts is not available on this page</b>', false); return; }
+  var box = MK.view === 'need' && !$('maker').hidden && !!$('mk-choose');   /* chosen from the "what you need" step: progress and problems show there, next to its button */
+  function say(title, detail, frac) {
+    if (!box) { note('<b>' + esc(title) + '</b><span>' + esc(detail) + '</span>', true); return; }
+    runSay(title + (detail ? ': ' + detail : '')); $('mk-prog').style.width = Math.round(100 * (frac || 0)) + '%';
+  }
+  function fail(title, lines, short) {
+    if (box) { runSay(title + '. ' + (short || lines[0]), true); return; }
+    note('<b class="warn">' + esc(title) + '</b>' + lines.map(function (l) { return '<span>' + esc(l) + '</span>'; }).join(''), false);
+  }
+  function reading(on) { if (!box) return; $('mk-choose').disabled = on; $('mk-cancel').textContent = on ? 'Stop' : 'Cancel'; }
+  if (typeof TractEngine === 'undefined') { fail('Making tracts is not available on this page', []); return; }
   var by = { scan: [], bval: [], bvec: [], other: [] }; files.forEach(function (f) { by[kindOf(f)].push(f); });
   var missing = []; if (!by.scan.length) missing.push('the scan itself (.nii or .nii.gz)'); if (!by.bval.length) missing.push('the .bval file'); if (!by.bvec.length) missing.push('the .bvec file');
-  if (missing.length || by.scan.length > 1) {
-    note('<b class="warn">' + (missing.length ? 'A diffusion scan needs three files' : 'Choose one scan at a time') + '</b><span>' + (missing.length ? 'Missing: ' + esc(missing.join(', ')) + '. Select the scan and its .bval and .bvec files together. The two small files list the strength and direction of the diffusion weighting for each volume; without them the scan cannot be turned into tracts.' : 'More than one .nii file was selected.') + '</span>' + (by.scan.length === 1 && missing.length ? '<span>If this .nii file is not a diffusion scan (for example a T1 picture), it cannot be tracked. Viewing ordinary scans as slices is not built yet.</span>' : ''), false);
-    return;
-  }
-  var f = by.scan[0]; busy = true;
+  if (missing.length) { fail('A diffusion scan needs three files', ['Missing: ' + missing.join(', ') + '. Select the scan and its .bval and .bvec files together. The two small files list the strength and direction of the diffusion weighting for each volume; without them the scan cannot be turned into tracts.'].concat(by.scan.length === 1 ? ['If this .nii file is not a diffusion scan (for example a T1 picture), it cannot be tracked. Viewing ordinary scans as slices is not built yet.'] : []), 'Missing: ' + missing.join(', ') + '. Choose all three files together.'); return; }
+  if (by.scan.length > 1) { fail('Choose one scan at a time', ['More than one .nii file was selected.'], 'More than one .nii file was selected. Choose one scan with its .bval and .bvec files.'); return; }
+  var f = by.scan[0], STOP = {}; busy = true; MK.readStop = false; if (box) runAt('mk-foot'); reading(true);
   try {
-    note('<b>Reading the scan</b><span>' + esc(f.name) + '</span>', true); await pause();
+    say('Reading the scan', f.name); await pause();
     if (f.size > 1.5e9) throw new Error('The file is larger than 1.5 GB, which is more than a browser can hold.');
     var u8 = await TractEngine.gunzip(new Uint8Array(await f.arrayBuffer())), vol = TractEngine.readNifti(u8);
     var grad = TractEngine.parseGradients(await by.bval[0].text(), await by.bvec[0].text(), vol.dims[3]);
-    note('<b>Finding the brain</b><span>' + esc(f.name) + '</span>', true); await pause(); await pause();
+    if (MK.readStop) throw STOP;
+    say('Finding the brain', f.name); await pause(); await pause();
     var job = TractEngine.fitJob(vol, grad, {}), last = 0;
-    while (job.step(50) < 1) { if (Date.now() - last > 150) { last = Date.now(); note('<b>Working out the fibre directions</b><span>' + Math.round(100 * job.done / job.total) + '% of ' + job.total.toLocaleString() + ' brain voxels</span>', true); } await pause(); }
+    while (job.step(50) < 1) { if (MK.readStop) throw STOP; if (Date.now() - last > 150) { last = Date.now(); say('Working out the fibre directions', Math.round(100 * job.done / job.total) + '% of the brain', job.done / job.total); } await pause(); }
     var model = job.model, check = checkDirections(model);
     forgetScan();
     SCAN = { name: f.name, model: model, check: check, flip: check.use.slice(), base: null, result: null, named: null, shown: '', raw: { vol: vol, grad: grad }, correction: null, madeModel: null, info: { dims: vol.dims.slice(), voxel: vol.voxel.slice(), nB0: grad.nB0, shells: grad.shells, n: grad.n, unique: model.fit.uniqueDirections } };
@@ -3566,20 +3631,29 @@ async function openScan(files) {
     MK.o = Object.assign({}, TractEngine.TRACK_DEFAULTS, { stepSize: +(0.5 * Math.min(vol.voxel[0], vol.voxel[1], vol.voxel[2])).toFixed(2), per: 300, follow: model.gqi && model.fit.uniqueDirections >= 30 ? 'gqi' : 'tensor' });
     MK.what = 'whole'; if (check.none) MK.level = 'all';  /* nothing to start from: show the threshold setting straight away */
     u8 = job = null;                                     /* the scan itself is kept, so its volumes can be lined up later */
-    busy = false; note(''); maker(); if (check.none) $('maker').scrollTop = 0;   /* keep the warning at the top in view */
-  } catch (e) { busy = false; SCAN = null; note('<b class="warn">This scan could not be used</b><span>' + esc((e && e.message) || 'It could not be read.') + '</span>', false); }
+    busy = false; note(''); maker();
+  } catch (e) {
+    busy = false; reading(false);
+    if (e === STOP) { if (box) $('mk-run').hidden = true; if ($('mk-choose')) $('mk-choose').focus({ preventScroll: true }); }
+    else { SCAN = null; fail('This scan could not be used', [(e && e.message) || 'It could not be read.']); }
+  }
   need = true;
 }
 
+/* the scan in plain words; the technical term stays in brackets for readers who know it */
 function scanLine() {
-  var i = SCAN.info, v = i.voxel.map(function (x) { return +x.toFixed(2); });
-  var parts = [i.nB0 + ' without diffusion weighting'].concat(i.shells.map(function (s) { return s.n + ' at b = ' + s.b; }));
-  return i.dims[0] + ' × ' + i.dims[1] + ' × ' + i.dims[2] + ' voxels of ' + (v[0] === v[1] && v[1] === v[2] ? v[0] : v.join(' × ')) + ' mm. ' + i.n + ' volumes: ' + parts.join(', ') + '.';
+  var i = SCAN.info, v = i.voxel.map(function (x) { return +x.toFixed(2); }), same = v[0] === v[1] && v[1] === v[2];
+  var parts = i.nB0 ? [plural(i.nB0, 'plain image') + ' (b = 0)'] : [];
+  i.shells.forEach(function (s, k) { parts.push(s.n.toLocaleString() + ' at ' + (k ? '' : 'scan strength ') + s.b); });
+  var list = parts.length > 1 ? parts.slice(0, -1).join(', ') + ' and ' + parts[parts.length - 1] : parts.join('');
+  return ['A grid of ' + i.dims[0] + ' × ' + i.dims[1] + ' × ' + i.dims[2] + ' tiny cubes (voxels), each ' + (same ? v[0] + ' mm across' : v.join(' × ') + ' mm') + '.',
+    plural(i.n, 'image') + ' (volumes): ' + list + (i.shells.length ? ' (b-value' + (i.shells.length > 1 ? 's' : '') + ', in s/mm²)' : '') + '.'];
 }
-function maker() {
-  var el = $('maker'), o = MK.o, g = SCAN.model.gqi, nd = SCAN.info.unique, at = atlas(), h = '<button class="close" type="button" aria-label="Close">×</button><div class="eyebrow">DIFFUSION SCAN</div><h2 id="mk-title">Make tracts from this scan</h2>';
-  h += '<p class="mk-scan"><b>' + esc(SCAN.name) + '</b><br>' + esc(scanLine()) + '</p>';
-  var warn = SCAN.model.notes.filter(function (n) { return !/different diffusion directions/.test(n); });
+/* stay: the control that was used to redraw the panel. It keeps the focus, and the panel keeps its place instead of jumping to the foot */
+function maker(stay) {
+  var el = $('maker'), top = stay && !el.hidden ? el.scrollTop : 0, o = MK.o, g = SCAN.model.gqi, nd = SCAN.info.unique, at = atlas(), h = '<button class="close" type="button" aria-label="Close">×</button><div class="eyebrow">DIFFUSION SCAN</div><h2 id="mk-title">Make tracts from this scan</h2>';
+  h += '<p class="mk-scan"><b>' + esc(SCAN.name) + '</b><br>' + scanLine().map(esc).join('<br>') + ' <button class="mini" id="mk-words" type="button" aria-controls="gloss">Words explained</button></p>';
+  var warn = SCAN.model.notes.filter(function (n) { return !/different diffusion directions/.test(n); }).map(plainNote);
   var flipSaid = SCAN.check.none ? { warning: '', summary: '' } : TractEngine.flipText(SCAN.check);   /* no test when tracking had nowhere to start */
   if (SCAN.check.none && !SCAN.base) warn.unshift('No part of this scan is above the anisotropy threshold, so tracking has nowhere to start. Lower ' + stopName() + ' under All settings, then choose Make tracts.');
   if (flipSaid.warning) warn.push(flipSaid.warning);
@@ -3611,25 +3685,26 @@ function maker() {
     if (MK.what === 'whole') h += '<div class="mk-f"><label>Where to start</label><output>Whole brain</output><small>Streamlines start at random points in every voxel above the anisotropy threshold. To start in, pass through, avoid or end in a chosen place, make the whole-brain set first and then add regions on the model.</small></div>';
   }
   h += '</div><p class="hint">The scan stays on this device. ' + (SCAN.model.correction ? 'Head movement has been corrected; image distortion is not corrected.' : canCorrect() ? 'Head movement can be checked and corrected above; image distortion is not corrected.' : 'This tool does not correct for head movement or image distortion.') + ' For learning, not for diagnosis.</p>';
-  h += '<div id="mk-run" hidden><div class="mk-bar"><i id="mk-prog"></i></div><p class="mk-stage" id="mk-stage" role="status"></p></div>';
-  h += '<div class="row"><button class="primary" id="mk-go" type="button">' + (MK.what === 'named' ? 'Make named tracts' : 'Make tracts') + '</button><button class="mini" id="mk-cancel" type="button">Cancel</button></div>';
-  el.innerHTML = h; el.hidden = false; MK.stop = false;
+  h += footHtml(MK.what === 'named' ? 'Make named tracts' : 'Make tracts', 'mk-go');
+  el.innerHTML = h; el.hidden = false; MK.view = 'scan'; MK.stop = false;
   el.querySelector('.close').onclick = $('mk-cancel').onclick = function () { if (MK.running) MK.stop = true; else el.hidden = true; };
   [['mk-level', function (v) { MK.level = v; }], ['mk-what', function (v) { MK.what = v; }], ['mk-follow', function (v) { o.follow = v; }]].forEach(function (pair) {
-    Array.prototype.forEach.call($(pair[0]).children, function (b) { b.onclick = function () { if (MK.running || b.disabled) return; pair[1](b.getAttribute('data-v')); maker(); }; });
+    Array.prototype.forEach.call($(pair[0]).children, function (b) { b.onclick = function () { if (MK.running || b.disabled) return; pair[1](b.getAttribute('data-v')); maker('#' + pair[0] + ' [data-v="' + b.getAttribute('data-v') + '"]'); }; });
   });
   MK_F.forEach(function (F) {
     var inp = $('mk-' + F.k); if (!inp) return;
     inp.oninput = inp.onchange = function () { o[F.k] = F.opts ? inp.value : Math.max(0, +inp.value || 0); if (F.k === 'seed') o.seed = Math.round(o.seed); var out = $('mk-' + F.k + '-v'); if (out) out.textContent = fieldText(F, o[F.k]); };
   });
   if ($('mk-flip')) $('mk-flip').onchange = function () { SCAN.flip = this.value.split(',').map(Number); };
-  if ($('mk-cmodel')) $('mk-cmodel').onchange = function () { MK.c.model = this.value; maker(); };
+  if ($('mk-cmodel')) $('mk-cmodel').onchange = function () { MK.c.model = this.value; maker('#mk-cmodel'); };
   if ($('mk-cpe')) $('mk-cpe').onchange = function () { MK.c.pe = +this.value; };
   if ($('mk-credraw')) $('mk-credraw').onchange = function () { MK.c.redraw = this.value; };
   if ($('mk-cplace')) $('mk-cplace').onchange = function () { MK.c.place = this.value; };
   if ($('mk-cslices')) $('mk-cslices').onchange = function () { MK.c.slices = this.value; };
   wireCorrection();
-  $('mk-go').onclick = runMaker; $('mk-go').focus();
+  $('mk-words').onclick = function () { if ($('gloss').hidden) openGloss(this); else closeGloss(); };
+  $('mk-go').onclick = runMaker;
+  ((stay && el.querySelector(stay)) || $('mk-go')).focus({ preventScroll: true }); el.scrollTop = top;
 }
 /* ---------- head movement and eddy currents ---------- */
 function canCorrect() { return typeof TractCorrect !== 'undefined' && !!(SCAN && SCAN.raw); }
@@ -3653,9 +3728,9 @@ function moveChart(c) {                                   /* one bar per volume,
 function correctionBlock() {
   if (!canCorrect()) return '';
   var c = SCAN.correction, used = !!SCAN.model.correction, h = '<div class="mk-opt" id="mk-corr"><label>Head movement and eddy currents</label>';
-  if (c) h += moveChart(c) + '<small id="mk-found">' + esc(moveWords(c.summary)) + ' ' + (used ? 'Tracts are now made from the lined-up scan.' : 'The scan is being used as it was.') + '</small>';
-  else h += '<small>Lines every volume up with the first one, shows how far the head moved between them, and makes tracts from the lined-up scan. About ' + (roughSeconds() < 90 ? roughSeconds() + ' seconds' : Math.round(roughSeconds() / 60) + ' minutes') + ' for this scan.</small>';
-  h += '<div class="row">' + (used ? '<button class="mini" id="mk-uncorrect" type="button">Use the scan as it was</button>' : '') + '<button class="mini" id="mk-correct" type="button">' + (c ? (used ? 'Check again' : 'Check and correct again') : 'Check and correct') + '</button></div></div>';
+  if (c) h += moveChart(c) + '<small id="mk-found">' + esc(moveWords(c.summary)) + ' ' + (used ? '"Make tracts" now uses the lined-up scan.' : 'The scan is being used as it was.') + '</small>';
+  else h += '<small>Lines every volume up with the first one and shows how far the head moved between them. It does not make tracts itself: afterwards, "Make tracts" uses the lined-up scan. About ' + (roughSeconds() < 90 ? roughSeconds() + ' seconds' : Math.round(roughSeconds() / 60) + ' minutes') + ' for this scan.</small>';
+  h += '<div class="row">' + (used ? '<button class="mini" id="mk-uncorrect" type="button">Use the scan as it was</button>' : '') + '<button class="mini" id="mk-correct" type="button">' + (c ? (used ? 'Check again' : 'Check and correct again') : 'Check and correct') + '</button></div><div id="mk-corr-run"></div></div>';
   return h;
 }
 function wireCorrection() {
@@ -3673,7 +3748,7 @@ async function refit(vol, grad, label) {                  /* work out the maps a
 }
 async function runCorrection() {
   if (MK.running || busy || !canCorrect()) return;
-  MK.running = true; busy = true; MK.stop = false; $('mk-run').hidden = false; $('mk-go').disabled = true; $('mk-cancel').textContent = 'Stop'; $('mk-prog').style.width = '0%'; $('mk-stage').textContent = 'Finding the brain';
+  MK.running = true; busy = true; MK.stop = false; runAt('mk-corr-run'); runSay('Finding the brain'); $('mk-go').disabled = true; $('mk-cancel').textContent = 'Stop';
   ['mk-correct', 'mk-uncorrect'].forEach(function (id) { if ($(id)) $(id).disabled = true; });
   var err = null, done = false; await pause();
   try {
@@ -3690,14 +3765,14 @@ async function runCorrection() {
     }
   } catch (e) { err = (e && e.message) || 'The volumes could not be lined up.'; }
   MK.running = false; busy = false; need = true;
-  if (!$('maker').hidden || err || done) { maker(); if (err) { $('mk-run').hidden = false; $('mk-stage').textContent = err; } }
+  if (!$('maker').hidden || err || done) { maker('#mk-correct'); if (err) { runAt('mk-corr-run'); runSay(err, true); } }
 }
 async function useOriginal() {
   if (MK.running || busy || !canCorrect() || !SCAN.model.correction) return;
-  MK.running = true; busy = true; MK.stop = false; $('mk-run').hidden = false; $('mk-go').disabled = true; ['mk-correct', 'mk-uncorrect'].forEach(function (id) { if ($(id)) $(id).disabled = true; });
+  MK.running = true; busy = true; MK.stop = false; runAt('mk-corr-run'); $('mk-go').disabled = true; ['mk-correct', 'mk-uncorrect'].forEach(function (id) { if ($(id)) $(id).disabled = true; });
   var err = null; await pause();
   try { var model = await refit(SCAN.raw.vol, SCAN.raw.grad, 'Working out the fibre directions from the scan as it was'); if (model) { SCAN.model = model; SCAN.check = checkDirections(model); SCAN.flip = SCAN.check.use.slice(); } } catch (e) { err = (e && e.message) || 'The scan could not be read again.'; }
-  MK.running = false; busy = false; need = true; maker(); if (err) { $('mk-run').hidden = false; $('mk-stage').textContent = err; }
+  MK.running = false; busy = false; need = true; maker('#mk-correct'); if (err) { runAt('mk-corr-run'); runSay(err, true); }
 }
 function fieldText(F, v) { return (F.dp ? (+v).toFixed(F.dp) : Math.round(v).toLocaleString()) + (F.unit || ''); }
 function trackOptions() { var o = MK.o; return { follow: o.follow, method: o.method, faThreshold: o.faThreshold, qaThreshold: o.qaThreshold, maxAngle: o.maxAngle, stepSize: o.stepSize, minLength: o.minLength, maxLength: o.maxLength, count: o.count, seed: o.seed, flip: SCAN.flip }; }
@@ -3705,9 +3780,9 @@ function tractName(id) { var d = K.describe(id); return d.name + (d.side ? ' ' +
 
 async function runMaker() {
   if (MK.running || busy || !SCAN) return;
-  var o = MK.o, named = MK.what === 'named', stage = function (t) { $('mk-stage').textContent = t; $('mk-run').hidden = false; };
+  var o = MK.o, named = MK.what === 'named', stage = function (t) { runAt('mk-foot'); runSay(t, true); };
   if (!named && o.maxLength <= o.minLength) { stage('The longest streamline kept must be longer than the shortest.'); return; }
-  MK.running = true; MK.stop = false; busy = true; $('mk-run').hidden = false; $('mk-go').disabled = true; $('mk-cancel').textContent = 'Stop';
+  MK.running = true; MK.stop = false; busy = true; runAt('mk-foot'); $('mk-go').disabled = true; $('mk-cancel').textContent = 'Stop';
   var t0 = Date.now(), res = null, err = null, p = 0, job, show = false;   /* show: the fix is a setting under All settings, so open them */
   try {
     if (named) {
@@ -3725,12 +3800,12 @@ async function runMaker() {
   }
   MK.running = false; busy = false; need = true;
   if ($('mk-go')) { $('mk-go').disabled = false; $('mk-cancel').textContent = 'Cancel'; }
-  if (err) { if (show && MK.level !== 'all') { MK.level = 'all'; maker(); $('mk-run').hidden = false; } $('mk-stage').textContent = err; return; }
+  if (err) { if (show && MK.level !== 'all') { MK.level = 'all'; maker('#mk-go'); } runAt('mk-foot'); runSay(err, true); return; }
   if (!res) { $('mk-run').hidden = true; return; }
-  $('mk-stage').textContent = 'Drawing'; await pause();
+  runSay('Drawing'); await pause();
   SCAN.seconds = (Date.now() - t0) / 1000; SCAN.madeModel = SCAN.model;
   var shown = named ? showNamed(res) : (SCAN.base = res, showWhole(res, 'whole'));
-  if (!shown) { $('mk-stage').textContent = 'The streamlines could not be drawn.'; return; }
+  if (!shown) { runSay('The streamlines could not be drawn.', true); return; }
   $('maker').hidden = true;
 }
 /* Why a whole-brain run kept nothing, naming the setting to change (shown under All settings). */
