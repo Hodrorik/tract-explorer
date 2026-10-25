@@ -72,6 +72,10 @@ input[type="range"] { accent-color: var(--accent); flex: 1; min-width: 80px; }
 .hint { color: var(--muted); font-size: 12.5px; margin: 0; }
 .legend { display: flex; gap: 12px; flex-wrap: wrap; font-size: 12px; color: var(--muted); }
 .legend i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 5px; vertical-align: -1px; }
+.legend.stack { flex-direction: column; gap: 5px; }
+.legend.round i { border-radius: 50%; }
+.legend b { font-weight: 700; color: var(--soft); }
+.lead { margin: 0; color: var(--text); }
 #search { width: 100%; background: var(--ink); border: 1px solid var(--line); border-radius: 7px; padding: 7px 10px; }
 #list { display: flex; flex-direction: column; margin: 0 -8px; }
 .item { display: flex; align-items: center; gap: 8px; padding: 4px 8px; border-radius: 6px; }
@@ -79,6 +83,7 @@ input[type="range"] { accent-color: var(--accent); flex: 1; min-width: 80px; }
 .item.sel button { font-weight: 600; color: var(--accent); }
 .item.part { padding-left: 26px; }
 .item input { accent-color: var(--accent); margin: 0; flex: none; }
+.tick { display: inline-flex; align-items: center; flex: none; }
 .item .sw { width: 10px; height: 10px; border-radius: 50%; flex: none; }
 .item button { flex: 1; min-width: 0; text-align: left; background: none; border: 0; padding: 2px 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .item .side { font: 500 10.5px var(--mono); color: var(--muted); flex: none; }
@@ -92,7 +97,7 @@ input[type="range"] { accent-color: var(--accent); flex: 1; min-width: 80px; }
 #views { position: absolute; top: 12px; right: 12px; display: flex; gap: 4px; flex-wrap: wrap; justify-content: flex-end; z-index: 2; }
 #views button { background: var(--glass); border: 1px solid var(--line); border-radius: 6px; padding: 5px 9px; color: var(--muted); font-size: 12.5px; }
 #views button:hover { color: var(--text); }
-.axis { position: absolute; font: 500 11px var(--mono); letter-spacing: .06em; color: var(--muted); pointer-events: none; transform: translate(-50%, -50%); text-transform: uppercase; }
+.orient { position: absolute; font: 500 11px var(--mono); letter-spacing: .06em; color: var(--muted); pointer-events: none; transform: translate(-50%, -50%); text-transform: uppercase; white-space: nowrap; visibility: hidden; }   /* front, back, left and right, kept outside the brain by the frame loop */
 #tip { position: absolute; pointer-events: none; background: var(--glass); border: 1px solid var(--line); border-radius: 6px; padding: 4px 8px; font-size: 12.5px; z-index: 4; white-space: nowrap; }
 #card { position: absolute; left: 14px; bottom: 14px; width: min(370px, calc(100% - 28px)); max-height: 62%; overflow-y: auto; background: var(--glass); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; z-index: 2; display: flex; flex-direction: column; gap: 10px; }
 #card h2 { font-size: 16.5px; margin: 0; font-weight: 700; text-wrap: balance; }
@@ -105,10 +110,21 @@ input[type="range"] { accent-color: var(--accent); flex: 1; min-width: 80px; }
 .bars { display: grid; grid-template-columns: 42px 1fr 64px; gap: 4px 8px; align-items: center; font-size: 12.5px; }
 .bars .bar { height: 7px; background: var(--line); border-radius: 4px; overflow: hidden; }
 .bars .bar i { display: block; height: 100%; background: var(--accent); }
+.prof { display: block; width: 100%; height: 60px; }
+.prof polyline { fill: none; stroke: var(--accent); stroke-width: 1.5; vector-effect: non-scaling-stroke; }
+.axis { display: flex; justify-content: space-between; font: 11px var(--mono); color: var(--muted); }
 .bars .num { font: 12px var(--mono); text-align: right; font-variant-numeric: tabular-nums; color: var(--muted); }
+.card-acts { position: sticky; bottom: -14px; margin: 0 -16px -14px; padding: 8px 16px 14px; background: var(--panel); border-top: 1px solid var(--line); border-radius: 0 0 10px 10px; z-index: 1; }   /* the card's buttons stay in view while the card scrolls */
 .pairs { display: flex; flex-direction: column; gap: 3px; font-size: 12.5px; }
 .pairs div { display: flex; justify-content: space-between; gap: 10px; }
 .pairs em { font: normal 12px var(--mono); color: var(--muted); flex: none; }
+.pairs small, .rank small { display: block; font-size: 11.5px; color: var(--muted); }
+.pairs.stack { gap: 8px; }
+.pairs.stack div { flex-direction: column; gap: 1px; }
+.pairs b.num { font-weight: 500; color: var(--soft); }
+.pairs.stack em { font-family: var(--ui); font-size: 12.5px; }
+.num { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+#card .where { margin: 2px 0 0; font-size: 12.5px; color: var(--soft); }
 .close { position: absolute; top: 8px; right: 8px; background: none; border: 0; color: var(--muted); font-size: 18px; line-height: 1; padding: 4px 8px; }
 .rank { display: flex; flex-direction: column; margin: 0 -8px; }
 .rank button { display: flex; justify-content: space-between; gap: 10px; background: none; border: 0; padding: 5px 8px; border-radius: 6px; text-align: left; }
@@ -137,7 +153,7 @@ input[type="range"] { accent-color: var(--accent); flex: 1; min-width: 80px; }
 .fine { font-size: 12px; color: var(--muted) !important; overflow-wrap: anywhere; }
 .primary:hover { filter: brightness(1.08); }
 #note .acts { display: flex; flex-wrap: wrap; gap: 6px; margin: 4px 0 2px; }
-#note #mk-msg:empty { display: none; }
+#note #mk-msg:empty, #maker #mk-scan-msg:empty { display: none; }
 #maker { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); width: min(540px, calc(100% - 24px)); max-height: calc(100% - 24px); overflow-y: auto; background: var(--panel); border: 1px solid var(--line-2); border-radius: 14px; padding: 18px 20px; z-index: 7; display: flex; flex-direction: column; gap: 12px; box-shadow: 0 18px 60px rgba(0,0,0,.4); }
 #maker > * { flex: none; }
 #maker h2 { margin: 2px 0 0; font-size: 19px; font-weight: 700; letter-spacing: -.01em; text-wrap: balance; }
@@ -171,12 +187,39 @@ input[type="range"] { accent-color: var(--accent); flex: 1; min-width: 80px; }
 #maker .mv-table td { text-align: right; padding: 2px 6px; border-top: 1px solid var(--line); color: var(--soft); }
 #maker .mv-table th:first-child, #maker .mv-table td:first-child { text-align: left; }
 #maker .mk-opt .row { margin-top: 2px; }
-.rg-row { display: grid; grid-template-columns: 10px minmax(0, 1.3fr) minmax(50px, 1fr) 3.4em auto; gap: 6px; align-items: center; margin-bottom: 6px; }
-.rg-row i { width: 10px; height: 10px; border-radius: 50%; }
+.rg-row { display: grid; grid-template-columns: 10px minmax(0, 1fr) 4.6em auto; gap: 4px 6px; align-items: center; margin-bottom: 10px; }   /* two lines: the job on the first, so every word of it shows; the size on the second */
+.rg-row i { width: 10px; height: 10px; border-radius: 50%; grid-area: 1 / 1; }
+.rg-row select { grid-area: 1 / 2 / 2 / 4; }
+.rg-row button { grid-area: 1 / 4; }
+.rg-row input[type="range"] { grid-area: 2 / 2; }
+.rg-row output { grid-area: 2 / 3; }
 .rg-row select { background: var(--panel-2); border: 1px solid var(--line); border-radius: 6px; padding: 3px 4px; min-width: 0; font-size: 12.5px; }
 .rg-row input[type="range"] { min-width: 0; }
 .rg-row output { font: 500 11.5px var(--mono); color: var(--muted); text-align: right; }
 #rg-add[aria-pressed="true"] { border-color: var(--accent); color: var(--accent); }
+#pk-on[aria-pressed="true"], #sg-pk-on[aria-pressed="true"] { border-color: var(--accent); color: var(--accent); }
+.pk-count { margin: 0; font-size: 12.5px; color: var(--soft); }
+.pk-count:empty { display: none; }
+#gl.picking { cursor: crosshair; }
+#lasso[hidden] { display: none; }
+#lasso { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; z-index: 1; overflow: visible; }
+.lasso polygon { fill: none; stroke: var(--accent); stroke-width: 2; stroke-dasharray: 6 4; stroke-linejoin: round; }
+.lasso polygon.edge { fill: var(--accent); fill-opacity: .1; stroke: var(--ink); stroke-width: 5; stroke-dasharray: none; }   /* a dark edge under the dashes, so the loop shows over bright lines too */
+.sl-row { display: grid; grid-template-columns: 4.8em minmax(0, 1fr) 3.6em; gap: 6px; align-items: center; }   /* a slice: on or off, where it cuts, which slice of how many */
+.sl-row input[type="range"] { min-width: 0; }
+.sl-row output { font: 500 11.5px var(--mono); color: var(--muted); text-align: right; font-variant-numeric: tabular-nums; }
+.sl-show { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 8px; align-items: center; }
+#sl-key .legend { gap: 2px 10px; }
+#sl-key .legend span { white-space: nowrap; }   /* each colour and its words stay together; the three wrap as a group needs */
+.sl-show select { background: var(--panel-2); border: 1px solid var(--line); border-radius: 6px; padding: 3px 4px; min-width: 0; font-size: 12.5px; }
+.read { margin: 0; font-size: 12.5px; color: var(--soft); min-height: 1.5em; }   /* what a chart says at the point under the pointer or finger */
+.bars .bar.on { box-shadow: 0 0 0 2px var(--soft); }
+.prof .prof-at { stroke: var(--soft); stroke-width: 1; vector-effect: non-scaling-stroke; }
+.prof, .bars, #maker .mv-plot { touch-action: pan-y; }   /* a finger dragged across a chart reads it; up and down still scrolls */
+.grip { display: flex; position: sticky; top: 0; z-index: 2; flex: none; flex-direction: column; align-items: center; justify-content: center; gap: 3px; width: 100%; min-height: 40px; padding: 6px 0 2px; border: 0; background: var(--panel); color: var(--muted); font-size: 12px; touch-action: none; }   /* the handle of the phone sheet */
+.grip::before { content: ""; width: 38px; height: 4px; border-radius: 2px; background: var(--line-2); }
+#side > .grip { display: none; }
+.dock-nav { display: none; }
 #note details { font-size: 12.5px; } #note details summary { cursor: pointer; color: var(--text); } #note details span { display: block; margin-top: 4px; } #note details i { font-style: normal; color: var(--text); }
 #maker .mk-bar { height: 6px; border-radius: 3px; background: var(--panel-2); overflow: hidden; }
 #maker .mk-bar i { display: block; height: 100%; width: 0; background: var(--accent); }
@@ -191,6 +234,23 @@ input[type="range"] { accent-color: var(--accent); flex: 1; min-width: 80px; }
 #maker .mk-run.err .mk-bar { display: none; }
 #maker .mk-run.err .mk-stage { color: var(--text); border-left: 2px solid var(--bad); padding-left: 10px; }
 #mk-corr-run { display: contents; }
+/* a fade over the footer's top edge, with a word, while there is more of the panel below it */
+#maker .mk-foot::before { content: "More below"; position: absolute; left: 0; right: 0; bottom: 100%; height: 36px; display: flex; align-items: flex-end; justify-content: center; padding-bottom: 4px; font: 500 11px var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); background: linear-gradient(to bottom, transparent, var(--panel) 75%); pointer-events: none; opacity: 0; }
+#maker.mk-below .mk-foot::before { opacity: 1; }
+/* the fold: one closed section ("More settings") whose label says how many settings it holds and how many were changed; inside, named groups */
+.fold { border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+.fold > summary { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 10px; min-height: 40px; padding: 10px 0 10px 18px; position: relative; cursor: pointer; list-style: none; font-weight: 700; }
+.fold > summary::-webkit-details-marker { display: none; }
+.fold > summary::before { content: ""; position: absolute; left: 2px; top: 16px; width: 6px; height: 6px; border-right: 2px solid var(--muted); border-bottom: 2px solid var(--muted); transform: rotate(-45deg); transition: transform .15s; }
+.fold[open] > summary::before { transform: rotate(45deg); top: 14px; }
+.fold-n { font-weight: 400; font-size: 12.5px; color: var(--muted); }
+.fold-n.on { color: var(--text); font-weight: 700; }
+.fold-what { flex-basis: 100%; font-weight: 400; font-size: 12.5px; color: var(--soft); }
+.fold-body { display: flex; flex-direction: column; gap: 18px; padding: 4px 0 16px; }
+.fold-g { display: flex; flex-direction: column; gap: 12px; }
+.fold-g + .fold-g { border-top: 1px solid var(--line); padding-top: 16px; }
+.fold-g h3 { margin: 0; }
+@media (prefers-reduced-motion: reduce) { .fold > summary::before { transition: none; } }
 #g-data .primary { padding: 7px 12px; font-size: 13px; }
 /* family chips, each with its one-line meaning under it */
 .chips.fams { flex-direction: column; flex-wrap: nowrap; align-items: flex-start; gap: 8px; }
@@ -214,7 +274,50 @@ input[type="range"] { accent-color: var(--accent); flex: 1; min-width: 80px; }
 .gloss dd { margin: 0; color: var(--soft); font-size: 13px; }
 #gloss-open { margin-top: 8px; }
 #gloss-open[aria-expanded="true"] { border-color: var(--accent); color: var(--text); }
+/* the right-hand column on a computer: the tract or region card on top, the results box under it, below the view buttons and above the
+   credit line (the page sets --side-top and --side-bottom); taller content scrolls inside the column. On phones the panels keep their own places. */
+#side { display: contents; }
+@media (min-width: 761px) and (min-height: 501px) {
+  #app:not([data-card="drawer"]):not([data-card="strip"]) #side { display: flex; flex-direction: column; gap: 10px; position: absolute; right: 14px; top: var(--side-top, 14px); width: min(340px, calc(100% - 28px)); max-height: calc(100% - var(--side-top, 14px) - var(--side-bottom, 14px)); overflow-y: auto; overscroll-behavior: contain; z-index: 3; border-radius: 10px; }
+  #app:not([data-card="drawer"]):not([data-card="strip"]) #side .card-acts { bottom: 0; }
+  #app:not([data-card="drawer"]):not([data-card="strip"]) #side > * { position: relative; left: auto; top: auto; right: auto; bottom: auto; width: auto; max-height: none; flex: none; overflow: visible; }
+}
 
+/* phones, upright or turned on their side (and very short windows): the tract card, region card and results box share one sheet at
+   the foot of the 3D view; short view buttons; every tap target at least 40 px (46 px before the compact zoom of 88%) */
+@media (max-width: 760px), (max-height: 500px) {
+  #app { --tap: 40px; }
+  #app[data-size="compact"] { --tap: 46px; }
+  #how { display: none; }
+  #views { left: 12px; right: 12px; gap: 4px; }
+  #views button { min-height: var(--tap); min-width: var(--tap); padding: 0 9px; }
+  .vw-long { display: none; }   /* "Left side" reads "Left", so the six buttons fit one row */
+  #side { display: flex; flex-direction: column; position: absolute; left: 0; right: 0; bottom: 0; max-height: 46%; z-index: 4; background: var(--panel); border-top: 1px solid var(--line-2); border-radius: 14px 14px 0 0; box-shadow: 0 -8px 30px rgba(0,0,0,.35); overflow-y: auto; overscroll-behavior: contain; }
+  #side.empty { display: none; }
+  #side.big { max-height: calc(100% - 190px); }   /* open: the view buttons (64 px) and at least 126 px for the brain stay above it; the rest scrolls inside */
+  #side > #card, #side > #note { position: relative; left: auto; right: auto; top: auto; bottom: auto; width: auto; max-height: none; overflow: visible; flex: none; border: 0; border-radius: 0; background: none; }
+  #side > #card:not([hidden]) ~ #note { border-top: 1px solid var(--line); }
+  #side .card-acts { bottom: 0; background: var(--panel); }
+  #side > .grip { display: flex; }
+  /* folded (the start): only the title, the close button and the main buttons */
+  #side:not(.big) #card > :not(.close):not(.kind):not(h2):not(.chead):not(.card-acts), #side:not(.big) #card .chead > p { display: none; }
+  #side:not(.big) #note > :not(.close):not(b):not(.acts):not(#mk-msg) { display: none; }
+  #side:not(.big) #card:not([hidden]) ~ #note { display: none; }
+  #side .close { top: 2px; right: 6px; }
+  .close { min-width: var(--tap); min-height: var(--tap); }
+  #rail button, #rail select, #rail input[type="search"], #rail .check, #rail .item, #rail input[type="range"], #side button, #welcome button, #maker button, #maker select, #maker input[type="number"], .fold > summary { min-height: var(--tap); }
+  #rail .tick { min-width: var(--tap); min-height: var(--tap); justify-content: center; margin: 0 -10px 0 -12px; }
+  #maker .mk-scan .mini { min-height: 0; }   /* the one inside a line of text; its tap area is drawn below */
+  .item button { align-self: stretch; }
+  #gloss-open, #sheetbtn { position: relative; }
+  #gloss-open::after, #mk-words::after, #sheetbtn::after { content: ""; position: absolute; left: 0; right: 0; top: 50%; height: 40px; transform: translateY(-50%); }   /* a 40 px tap area without making the panel's top bar (or the scan summary's line) taller */
+  #mk-words { position: relative; }
+  #gloss .close { top: 4px; right: 4px; }
+  #app[data-size="compact"] :is(#gloss-open, #mk-words, #sheetbtn)::after { height: 46px; }   /* still 40 px on screen after the compact zoom */
+  #gloss-open { min-height: 0; }
+  #sheetbtn { min-height: 0; }
+}
+/* upright phones: the controls are a bottom sheet under the 3D view */
 @media (max-width: 760px) {
   #app { flex-direction: column-reverse; }
   #rail { width: 100%; height: 46%; border-right: 0; border-top: 1px solid var(--line); }
@@ -224,21 +327,10 @@ input[type="range"] { accent-color: var(--accent); flex: 1; min-width: 80px; }
   .head h1 { font-size: 17px; margin: 0; flex: 1; }
   .head .eyebrow, .head .sub { display: none; }
   #sheetbtn { display: block; }
+  .rg-row button { min-width: var(--tap); }
   .pane { padding: 12px 16px 16px; }
   .foot { padding-inline: 16px; }
-  #card { max-height: 48%; }
-  #note { top: 92px; max-height: 40%; }
-  #views { max-width: 60%; }
-  #how { display: none; }
-  #gloss-open { margin: 0; position: relative; }
-  #gloss-open::after, #mk-words::after { content: ""; position: absolute; left: 0; right: 0; top: 50%; height: 40px; transform: translateY(-50%); }   /* a 40 px tap area without making the panel's top bar (or the scan summary's line) taller */
-  #mk-words { position: relative; }
-  .pop .row button, #maker .mk-foot .row button { min-height: 40px; }
-  .sugg .mini { min-height: 40px; }
-  #gloss .close { min-width: 40px; min-height: 40px; top: 4px; right: 4px; }
-  #app[data-size="compact"] :is(#gloss-open, #mk-words)::after { height: 46px; }   /* still 40 px on screen after the compact zoom */
-  #app[data-size="compact"] :is(.pop .row button, #gloss .close, .sugg .mini, #maker .mk-foot .row button) { min-height: 46px; }
-  #app[data-size="compact"] #gloss .close { min-width: 46px; }
+  #gloss-open { margin: 0; }
 }
 @media (prefers-reduced-motion: reduce) { * { scroll-behavior: auto; } }
 
@@ -267,7 +359,7 @@ input[type="range"] { accent-color: var(--accent); flex: 1; min-width: 80px; }
 #app[data-card="drawer"] #views { right: auto; left: 12px; justify-content: flex-start; }
 #app[data-card="drawer"] #note { top: 56px; }
 #app[data-card="strip"] #card { left: 14px; right: 14px; width: auto; max-height: 190px; display: grid; grid-auto-flow: column; grid-auto-columns: minmax(210px, 1fr); gap: 20px; align-items: start; overflow-x: auto; padding-right: 52px; }
-@media (min-width: 761px) {
+@media (min-width: 761px) and (min-height: 501px) {
   #app[data-layout="right"] { flex-direction: row-reverse; }
   #app[data-layout="right"] #rail { border-right: 0; border-left: 1px solid var(--line); }
   #app[data-layout="float"] #rail { position: absolute; left: 14px; top: 14px; bottom: 14px; width: 312px; border: 1px solid var(--line); border-radius: 14px; background: var(--glass); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); overflow: hidden; box-shadow: 0 12px 40px rgba(0,0,0,.28); }
@@ -276,7 +368,7 @@ input[type="range"] { accent-color: var(--accent); flex: 1; min-width: 80px; }
   #app[data-layout="float"] #note { left: 340px; }
   #app[data-layout="float"] #how { display: none; }
   #app[data-layout="dock"] { flex-direction: column-reverse; }
-  #app[data-layout="dock"] #rail { width: 100%; height: 218px; border-right: 0; border-top: 1px solid var(--line); display: grid; grid-template-columns: auto minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); }
+  #app[data-layout="dock"] #rail { width: 100%; height: 278px; border-right: 0; border-top: 1px solid var(--line); display: grid; grid-template-columns: auto minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); }
   #app[data-layout="dock"] .head { border-bottom: 0; padding: 10px 18px 4px; display: flex; align-items: baseline; gap: 12px; }
   #app[data-layout="dock"] .head h1 { margin: 0; font-size: 17px; }
   #app[data-layout="dock"] .head .sub { display: none; }
@@ -287,12 +379,34 @@ input[type="range"] { accent-color: var(--accent); flex: 1; min-width: 80px; }
   #app[data-layout="dock"] .pane { grid-column: 1 / -1; flex-direction: row; overflow-x: auto; overflow-y: hidden; padding: 12px 18px; gap: 20px; min-width: 0; contain: inline-size; }
   #app[data-layout="dock"] .pane > * { flex: 1 1 240px; min-width: 190px; max-width: 340px; max-height: 100%; overflow-y: auto; align-content: start; }
   #app[data-layout="dock"] #g-tracts { flex: 1.3 1 310px; min-width: 250px; max-width: 420px; }
+  #app[data-layout="dock"] #g-data { flex: 1.2 1 290px; min-width: 230px; }
+  #app[data-layout="dock"] #g-slices { flex: 1.1 1 280px; min-width: 275px; gap: 4px; }   /* wide enough for the three colour words of its key on one line, and short enough that the key shows whole, at 1400 x 900 and 1280 x 720 */
   #app[data-layout="dock"] #rail { position: relative; }
+  #app[data-layout="dock"] #g-tracts { position: sticky; right: 0; z-index: 1; background: var(--panel); border-left: 1px solid var(--line); padding-left: 16px; margin-left: -4px; }   /* the tract list stays in view; the other groups scroll under it */
+  #app[data-layout="dock"] .pane.wide #g-tracts { box-shadow: -18px 0 14px -12px var(--ink); }   /* a shadow where the other groups slide under it */
+  #app[data-layout="dock"] .dock-nav { display: flex; gap: 6px; position: absolute; top: 8px; right: 18px; z-index: 2; align-items: center; }   /* in the top bar, so it never covers a control */
+  #app[data-layout="dock"] .dock-nav[hidden] { display: none; }
+  #app[data-layout="dock"] .dock-nav span { font-size: 12px; color: var(--muted); }
   #app[data-layout="dock"] #pane-quiz .opts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 7px; flex: 2 1 440px; max-width: 660px; overflow: visible; }   /* four answers in two rows, so none hides below the panel */
   #app[data-layout="dock"] #pane-quiz .opts button { padding: 8px 10px; }
+  #app[data-layout="dock"] #qfb { overflow: hidden; }   /* a long answer scrolls in its own box from its first line; "Next tract" stays in view */
+  #app[data-layout="dock"] #qfbtext { min-height: 0; overflow-y: auto; }
+  #app[data-layout="dock"] #qnext { flex: none; }
   #app[data-layout="dock"] .foot { position: absolute; left: 0; bottom: 100%; max-width: min(640px, 52%); border-top: 0; padding: 0 18px 12px; line-height: 1.45; z-index: 1; }   /* the credit and "not a diagnostic image" sit at the foot of the 3D view, just above the panel */
 }
 
+/* phones: the first-visit welcome sits inside the 3D view, under the brain (upright) or beside it (turned), so the turning brain shows and the
+   controls, tabs and credit line stay free; the brain is fitted into the rest of the view */
+@media (max-width: 760px), (max-height: 500px) {
+  #app[data-size] #welcome { position: absolute; zoom: 1; transform: none; z-index: 6; overflow-y: auto; padding: 12px 16px; gap: 6px; font-size: 13px; line-height: 1.4; box-shadow: 0 -8px 30px rgba(0,0,0,.35); }
+  #app #welcome h2 { font-size: 15px; }
+  #app #wl-text { gap: 3px; }
+  #app #welcome .row { margin-top: 4px; }
+  #app #welcome .row button { min-height: 40px; padding-block: 0; }
+  #app #welcome .row { flex-wrap: nowrap; }
+}
+@media (max-width: 760px) { #app[data-size] #welcome { left: 0; right: 0; top: auto; bottom: 0; width: auto; max-height: 60%; border-radius: 14px 14px 0 0; border-width: 1px 0 0; } }
+@media (min-width: 761px) and (max-height: 500px) { #app[data-size] #welcome { left: 0; top: 0; bottom: 0; width: min(270px, 46%); max-height: none; border-radius: 0 14px 14px 0; border-width: 0 1px 0 0; } }
 body{overflow:auto;height:auto}#app.sg{height:auto;min-height:100%;display:block}.sg-main{max-width:980px;margin:0 auto;padding:28px 20px 60px;display:flex;flex-direction:column;gap:26px}.sg-head{display:flex;flex-direction:column;gap:8px}.sg-switch{gap:8px 12px;margin-top:6px}.sg-sec{display:flex;flex-direction:column;gap:12px;border-top:1px solid var(--line);padding-top:16px}.sg h2.label{margin:0}.sg #card.sg-static{position:static;width:auto;max-height:none;padding:14px 16px}.sg-tabs{max-width:420px;padding:0}.sg-list{max-width:420px;margin:0}.sg-swatches{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:10px}.sg-sw{display:grid;grid-template-columns:34px 1fr;gap:2px 10px;align-items:center}.sg-sw i{grid-row:span 2;width:34px;height:34px;border-radius:7px;border:1px solid var(--line-2)}.sg-sw b{font:500 12px var(--mono)}.sg-opts{max-width:420px}.sg #maker.sg-static{position:relative;left:auto;top:auto;transform:none;width:auto;max-width:540px;max-height:380px;z-index:auto;box-shadow:none}.sg-surfaces{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:10px}.sg-surfaces div{height:70px;border-radius:10px;padding:10px;font-size:12.5px;color:var(--muted)}.sg-static-foot{border-top:0;padding:0}</style>
 </head>
 <body>
@@ -355,9 +469,25 @@ body{overflow:auto;height:auto}#app.sg{height:auto;min-height:100%;display:block
     <p class="hint">A tract found by what it does carries the word it was found by, in a small rounded tag after its name.</p>
     <div class="sg-list"><div class="nomatch"><p class="hint">No tracts match “xyz”. Try a word for what a tract does:</p><div class="row sugg"><button class="mini" type="button">language</button><button class="mini" type="button">memory</button><button class="mini" type="button">vision</button><button class="mini" type="button">movement</button><button class="mini" type="button">hearing</button></div></div></div>
     <p class="hint">When a search finds nothing, the list suggests words that do find tracts. On phones these buttons are at least 40 px tall.</p>
-    <div class="stats"><div class="stat"><b>19.0</b><span>volume (mL)</span></div><div class="stat"><b>1,204</b><span>streamlines</span></div><div class="stat"><b>96</b><span>mean length (mm)</span></div><div class="stat"><b>0.48</b><span>mean FA</span></div></div>
+    <div class="stats"><div class="stat"><b>19.0</b><span>volume (mL)</span></div><div class="stat"><b>1,204</b><span>traced fibre lines</span></div><div class="stat"><b>96</b><span>mean length (mm)</span></div><div class="stat"><b>0.48</b><span>mean FA</span></div></div>
     <div class="bars"><span>Left</span><div class="bar"><i style="width:70%"></i></div><span class="num">19.0 mL</span><span>Right</span><div class="bar"><i style="width:31%"></i></div><span class="num">8.3 mL</span></div>
+    <svg class="prof" viewBox="0 0 198 60" preserveAspectRatio="none" role="img" aria-label="Example FA profile"><polyline points="0,40 22,30 44,22 66,18 88,20 110,16 132,24 154,30 176,38 198,46"/></svg>
+    <div class="axis"><span>one end</span><span>0.3 to 0.7</span><span>other end</span></div>
+    <p class="hint">A tract profile: one line in the accent colour, no fill or grid, with its ends and range named underneath.</p>
     <div class="legend"><span><i style="background:#e45756"></i>left–right</span><span><i style="background:#54a24b"></i>front–back</span><span><i style="background:#4c78a8"></i>up–down</span></div>
+    <p class="hint">A legend: a small swatch and a word for each colour the 3D view uses. Its colours come from the data, so it is the one place raw colours are allowed.</p>
+    <div class="legend stack round"><span><i style="background:#6fb7e9"></i><b>Left side</b>: cortex, cerebellum</span><span><i style="background:#d9c36a"></i><b>Deep regions</b>: thalamus, hippocampus, others</span></div>
+    <div class="legend stack"><span><i style="background:#9ec7eb"></i><b>Line, within one side</b></span><span><i style="background:#f0b55c"></i><b>Line, between the two sides</b></span></div>
+    <p class="hint">The key to the Connectome tab's dots and lines: the legend stacked one entry to a line (<code>.stack</code>), round swatches for dots (<code>.round</code>), square for lines. It is made from the same table that colours the dots, and lists only the colours in the set on screen.</p>
+    <div class="pairs stack" style="max-width:340px"><div><span>Visual: 8 (L)<small>Left, back of the brain (occipital lobe)</small></span><em><b class="num">220</b> traced lines, <b class="num">111</b> mm long on average</em></div><div><span>Control: parietal 1 (R)<small>Right, top and back of the brain (parietal lobe)</small></span><em><b class="num">98</b> traced lines, <b class="num">74</b> mm long on average</em></div></div>
+    <p class="hint">A partner row (<code>.pairs.stack</code>): the region's name, then in small type its side and where it is (the side alone when the place is not clear), then each number with its words, the numbers in mono with tabular figures.</p>
+    <div style="max-width:240px"><div class="rg-row"><i style="background:#f0b45c"></i><select aria-label="What this region does"><option>Must pass through</option><option>Must avoid</option><option>Start here</option><option>Must end here</option><option>Stop here</option></select><input type="range" min="3" max="30" value="10" aria-label="Size of this region"><output>10 mm</output><button class="mini" type="button" aria-label="Remove this region">×</button></div></div>
+    <p class="hint">A region row (<code>.rg-row</code>): two lines so the whole name of the job shows, even in a narrow box. The job and the remove button on the first, the size on the second. The dot is the colour of the ball drawn on the model. The ball is see-through, drawn on top of the tracts and the outline, with a thin wire edge, and starts at 10 mm.</p>
+    <div style="max-width:300px" class="group"><div class="label">Slices of the scan</div><div class="sl-row"><label class="check"><input type="checkbox" checked> Top</label><input type="range" min="0" max="49" value="24" aria-label="Move the top slice, from low to high"><output>25/50</output></div><div class="sl-row"><label class="check"><input type="checkbox"> Front</label><input type="range" min="0" max="95" value="48" disabled aria-label="Move the front slice, from back to front"><output>49/96</output></div><div class="sl-show"><label for="sg-sl-show">Show</label><select id="sg-sl-show"><option>Fibre direction (colour)</option><option>Fibre score (grey)</option><option>Plain image</option><option>T1 scan</option></select></div><div class="legend"><span><i style="background:rgb(255,0,0)"></i>left to right</span><span><i style="background:rgb(0,255,0)"></i>front to back</span><span><i style="background:rgb(0,0,255)"></i>up and down</span></div><p class="hint">Colour: the main fibre direction. Brighter: a higher fibre score.</p></div>
+    <div style="max-width:300px" class="group"><div class="label">Pick lines</div><div class="row"><button class="mini" id="sg-pk-on" type="button" aria-pressed="true">Pick lines</button><button class="mini" type="button">Delete picked</button><button class="mini" type="button">Keep only picked</button><button class="mini" type="button">Clear pick</button><button class="mini" type="button">Undo</button></div><p class="pk-count">1,204 traced fibre lines picked. 482 of them are drawn in the model. The rest are left out of the drawing so it turns smoothly, but they pass through the loop too.</p><p class="hint">Drag a loop round lines on the model to pick them. Each loop adds to the pick. Dragging does not turn the brain while this is on.</p></div>
+    <div style="position:relative;max-width:300px;height:120px;background:var(--ink);border:1px solid var(--line);border-radius:10px"><svg class="lasso" style="position:absolute;inset:0;width:100%;height:100%" aria-hidden="true"><polygon class="edge" points="40,30 160,18 250,50 230,100 90,104 30,70"/><polygon points="40,30 160,18 250,50 230,100 90,104 30,70"/></svg></div>
+    <p class="hint">The pick group (<code>#g-pick</code>, <code>.pk-count</code>) and the loop drawn on the model (<code>#lasso</code>, <code>.lasso</code>). "Pick lines" shows the accent edge while picking is on; the other buttons appear only when they can do something. The count line says how many traced fibre lines are picked and, for a thinned drawing, how many of them are drawn. The loop is a dashed accent line over a dark edge so it shows over bright lines. On phones each button is at least 40 px tall.</p>
+    <p class="hint">The slice group (<code>.sl-row</code>, <code>.sl-show</code>): one row a slice, its tick box, a slider that moves it (off while the slice is off) and which slice of how many, in mono. Then the menu of what the slices show, and the key: the legend with the three direction colours, made by the same rule that colours the slices, or one line saying what brightness means. Shown only for tracts made from a scan. On phones each control is at least 40 px tall.</p>
   </section>
 
   <section class="sg-sec" aria-labelledby="sg-quiz">
@@ -366,7 +496,7 @@ body{overflow:auto;height:auto}#app.sg{height:auto;min-height:100%;display:block
   </section>
 
   <section class="sg-sec" aria-labelledby="sg-pops">
-    <h2 id="sg-pops" class="label">Floating panels: welcome and word list</h2>
+    <h2 id="sg-pops" class="label">Floating panels: welcome, word list and the right-hand column</h2>
     <p class="hint">Panel colour with the stronger hairline, 12 px corners and a soft shadow. Over the 3D view they never cover the credit line. On phones their buttons are at least 40 px tall.</p>
     <div class="pop" style="max-width:440px">
       <h2>Welcome to Tract Explorer</h2>
@@ -381,6 +511,27 @@ body{overflow:auto;height:auto}#app.sg{height:auto;min-height:100%;display:block
         <div><dt>Voxel <span>· 3D pixel</span></dt><dd>A tiny cube of the scan, often about 2 mm across.</dd></div>
       </dl>
     </div>
+    <p class="hint">On a computer the tract card (or the region card, on the Wiring tab) and the results box share one column on the right of the 3D view, card on top. The column starts under the view buttons and ends above the credit line, so it never covers either; the brain moves left to make room. When the two are taller than the space, the column scrolls and the card's buttons stay at the foot of the card (scroll this example). Both use the glass surface with a thin line and 10 px corners. On phones the card and the results box keep their own places.</p>
+    <div role="group" aria-label="Example of the right-hand column" style="display:flex;flex-direction:column;gap:10px;width:340px;max-width:100%;max-height:300px;overflow-y:auto;border-radius:10px">
+      <div style="position:relative;flex:none;background:var(--glass);border:1px solid var(--line);border-radius:10px;padding:14px 16px;display:flex;flex-direction:column;gap:10px">
+        <div style="font:500 11px var(--mono);letter-spacing:.06em;text-transform:uppercase;color:var(--accent)">Association · left</div>
+        <b style="font-size:16.5px">Arcuate fasciculus</b>
+        <p style="margin:0;color:var(--soft)">Arches from the temporal lobe to the frontal lobe, linking the areas for understanding and producing speech.</p>
+        <div class="stats"><div class="stat"><b>8.3</b><span>volume (mL)</span></div><div class="stat"><b>127</b><span>mean length (mm)</span></div><div class="stat"><b>0.58</b><span>FA</span></div><div class="stat"><b>50</b><span>traced fibre lines</span></div></div>
+        <p class="fine" style="margin:0">Span 69 mm: the straight distance between its two ends. Curl 2.00: its length divided by its span, so 1 is perfectly straight.</p>
+        <div class="row card-acts" style="bottom:0"><button class="mini" type="button">Light up both sides</button><button class="mini" type="button">Show only this</button></div>
+      </div>
+      <div style="flex:none;background:var(--glass);border:1px solid var(--line);border-radius:10px;padding:12px 14px;display:flex;flex-direction:column;gap:5px;font-size:12.5px;color:var(--soft)"><b style="color:var(--text);font-size:13.5px">Found 83 of 87 atlas tracts in this scan</b><span>4,099 traced fibre lines in 7.3 s, several directions in each tiny cube of the scan.</span></div>
+    </div>
+    <p class="hint">On a phone the same card and results box are one sheet at the foot of the 3D view (<code>#side</code> with its grip, <code>.grip</code>). Folded, it shows the title and the main buttons, so the brain stays in view above it; the grip, or a drag on it, opens it and folds it back; open, it stops short of the brain, which keeps at least 126 px under the view buttons, and the rest scrolls inside; the panel's own close button closes it.</p>
+    <div role="group" aria-label="Example of the sheet on a phone, folded" style="width:340px;max-width:100%;background:var(--panel);border:1px solid var(--line-2);border-radius:14px 14px 0 0;overflow:hidden">
+      <button class="grip" type="button" aria-expanded="false">Show more</button>
+      <div style="padding:0 16px 12px;display:flex;flex-direction:column;gap:8px"><div style="font:500 11px var(--mono);letter-spacing:.06em;text-transform:uppercase;color:var(--accent)">Association · left</div><b style="font-size:16.5px">Arcuate fasciculus</b><div class="row"><button class="mini" type="button">Light up both sides</button><button class="mini" type="button">Show only this</button></div></div>
+    </div>
+    <p class="hint">A chart's read-out line (<code>.read</code>, soft 12.5 px) under the left and right bars and the FA chart on a card: pointing at a bar, or touching or dragging a finger across it, writes its numbers there.</p>
+    <div style="max-width:300px" class="group"><div class="bars"><span>Left</span><div class="bar on"><i style="width:100%"></i></div><span class="num">19.0 mL</span><span>Right</span><div class="bar"><i style="width:82%"></i></div><span class="num">15.6 mL</span></div><p class="read">Left: 19.0 mL, 55% of both sides together.</p></div>
+    <p class="hint">On a computer, when the bottom bar's groups are wider than the window, the bar scrolls sideways with the tract list kept in view at its right, and its top row shows the hint with two buttons (<code>.dock-nav</code>).</p>
+    <div class="row" style="align-items:center;gap:6px"><span style="font-size:12px;color:var(--muted)">More groups to the side</span><button class="mini" type="button" disabled>← Back</button><button class="mini" type="button">More →</button></div>
   </section>
 
   <section class="sg-sec" aria-labelledby="sg-scan">
@@ -394,7 +545,17 @@ body{overflow:auto;height:auto}#app.sg{height:auto;min-height:100%;display:block
       <p class="hint">Files are read on this device and are not uploaded.</p>
       <p class="mk-scan"><b>dwi.nii.gz</b><br>A grid of 96 × 96 × 60 tiny cubes (voxels), each 2.5 mm across.<br>65 images (volumes): 1 plain image (b = 0) and 64 at scan strength 1000 (b-value, in s/mm²). <button class="mini" type="button">Words explained</button></p>
       <div class="mk-run err"><p class="mk-stage">A diffusion scan needs three files. Missing: the .bvec file. Choose all three files together.</p></div>
-      <div class="mk-foot"><div class="mk-run"><div class="mk-bar"><i style="width:40%"></i></div><p class="mk-stage">Working out the fibre directions: 40% of the brain</p></div><div class="row"><button class="primary" type="button" disabled>Choose the three files</button><button class="mini" type="button">Stop</button></div></div>
+      <div class="mk-foot"><div class="mk-run"><div class="mk-bar"><i style="width:40%"></i></div><p class="mk-stage">Working out the fibre directions: 40% of the brain</p></div><div class="row"><button class="primary" type="button" disabled>Choose the files</button><button class="mini" type="button">Stop</button></div></div>
+    </div>
+    <h3 class="label">Fold (.fold): more settings in named groups</h3>
+    <p class="hint">Everything that is not needed to start sits in one fold, closed at first. Its label says how many settings it holds and how many were changed from where they started, and names them, so a change is not forgotten when the fold is closed. Inside, each group (.fold-g) has a heading and one line saying what it is for. When the panel has more below its footer, a fade marked "More below" sits over the footer's top edge (#maker.mk-below).</p>
+    <div id="maker" class="sg-static mk-below" role="group" aria-label="Example of the fold in the scan panel">
+      <details class="fold"><summary><span class="fold-name">More settings</span><span class="fold-n">(14 settings, none changed)</span></summary><div class="fold-body"><section class="fold-g"><h3 class="label">Prepare the scan</h3><p class="hint">Cleans the images up before the fibre directions are worked out.</p></section></div></details>
+      <details class="fold" open><summary><span class="fold-name">More settings</span><span class="fold-n on">(14 settings, 1 changed)</span><span class="fold-what">Changed: Remove false tracts.</span></summary><div class="fold-body">
+        <section class="fold-g"><h3 class="label">Fibre model</h3><p class="hint">How the fibre directions in each tiny cube of the scan are worked out.</p><div class="mk-opt"><label>Fibre directions in each tiny cube (voxel)</label><div class="seg"><button type="button" aria-pressed="false">One</button><button type="button" aria-pressed="true">Several (GQI)</button><button type="button" aria-pressed="false">Several (CSD)</button></div></div></section>
+        <section class="fold-g"><h3 class="label">Clean-up</h3><p class="hint">What is removed after tracking.</p><div class="mk-opt"><label>Remove false tracts</label><div class="seg"><button type="button" aria-pressed="true">On</button><button type="button" aria-pressed="false">Off</button></div></div></section>
+      </div></details>
+      <div class="mk-foot"><div class="row"><button class="primary" type="button">Make tracts</button><button class="mini" type="button">Cancel</button></div></div>
     </div>
   </section>
 
